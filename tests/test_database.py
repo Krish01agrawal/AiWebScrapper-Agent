@@ -28,6 +28,7 @@ def mock_database():
     mock_db.queries = AsyncMock(spec=AsyncIOMotorCollection)
     mock_db.content = AsyncMock(spec=AsyncIOMotorCollection)
     mock_db.processed_content = AsyncMock(spec=AsyncIOMotorCollection)
+    mock_db.processed_cache = AsyncMock(spec=AsyncIOMotorCollection)
     mock_db.query_sessions = AsyncMock(spec=AsyncIOMotorCollection)
     mock_db.analytics = AsyncMock(spec=AsyncIOMotorCollection)
     mock_db.migrations = AsyncMock(spec=AsyncIOMotorCollection)
@@ -304,6 +305,50 @@ class TestScrapedContentRepository:
         assert stats["total_content"] == 50
         assert stats["total_size_bytes"] == 1024000
         assert stats["unique_domains"] == 2
+    
+    @pytest.mark.asyncio
+    async def test_cross_url_duplicate_detection(self, mock_database):
+        """Test cross-URL duplicate detection with normalized content hashing."""
+        # Setup mock
+        mock_database.content.insert_one.return_value = MagicMock(inserted_id=ObjectId())
+        mock_database.content.find_one.return_value = None  # No existing content initially
+        
+        # Test
+        repo = ScrapedContentRepository(mock_database)
+        
+        # Create two content documents with same content but different URLs
+        content1 = ScrapedContentDocument(
+            url="https://example.com/article?ref=social",
+            title="Test Article",
+            content="This is the same content with extra spaces   and different case.",
+            content_type="article",
+            processing_time=2.5,
+            content_size_bytes=1024,
+            extraction_method="test_extraction"
+        )
+        
+        content2 = ScrapedContentDocument(
+            url="https://example.com/article?utm_source=email",
+            title="Different Title",
+            content="THIS IS THE SAME CONTENT WITH EXTRA SPACES AND DIFFERENT CASE.",
+            content_type="article",
+            processing_time=2.5,
+            content_size_bytes=1024,
+            extraction_method="test_extraction"
+        )
+        
+        # Save first content
+        result1 = await repo.save_scraped_content(content1)
+        
+        # Mock finding existing content for second save
+        mock_database.content.find_one.return_value = result1.model_dump(by_alias=True)
+        
+        # Save second content - should be detected as duplicate
+        result2 = await repo.save_scraped_content(content2)
+        
+        # Assertions
+        assert result1.content_hash == result2.content_hash  # Same hash due to normalization
+        assert result2.duplicate_of == result1.id  # Second content marked as duplicate
 
 
 class TestProcessedContentRepository:
@@ -378,6 +423,34 @@ class TestProcessedContentRepository:
         assert analytics["total_processed"] == 25
         assert analytics["avg_processing_duration"] == 3.5
         assert analytics["avg_quality_score"] == 0.82
+
+    @pytest.mark.asyncio
+    async def test_cache_round_trip_with_extra_fields(self, mock_database, sample_processed_document):
+        """Test cache round-trip with extra fields like expires_at and cache_key."""
+        from datetime import datetime, timedelta
+        
+        # Setup mock for caching
+        mock_database.processed_cache.update_one.return_value = MagicMock(upserted_id=ObjectId())
+        
+        # Setup mock for cache retrieval
+        cached_doc_data = sample_processed_document.model_dump(by_alias=True)
+        cached_doc_data["cache_key"] = "test_cache_key"
+        cached_doc_data["expires_at"] = datetime.utcnow() + timedelta(hours=1)
+        mock_database.processed_cache.find_one.return_value = cached_doc_data
+        
+        # Test caching
+        repo = ProcessedContentRepository(mock_database)
+        cache_success = await repo.cache_processed_results("test_cache_key", sample_processed_document, 3600)
+        assert cache_success is True
+        
+        # Test cache retrieval
+        cached_result = await repo.get_cached_results("test_cache_key")
+        
+        # Assertions - should handle extra fields gracefully
+        assert cached_result is not None
+        assert isinstance(cached_result, ProcessedContentDocument)
+        assert cached_result.cache_key == "test_cache_key"
+        assert cached_result.expires_at is not None
 
 
 class TestAnalyticsRepository:
@@ -573,12 +646,12 @@ class TestIndexManager:
         mock_database.query_sessions.list_indexes.return_value.to_list.return_value = []
         mock_database.analytics.list_indexes.return_value.to_list.return_value = []
         
-        # Mock index stats
-        mock_database.queries.index_stats.return_value = [
+        # Mock index stats aggregation
+        mock_database.queries.aggregate.return_value.to_list.return_value = [
             {"name": "index1", "accesses": {"ops": 100}},
             {"name": "index2", "accesses": {"ops": 50}}
         ]
-        mock_database.content.index_stats.return_value = [
+        mock_database.content.aggregate.return_value.to_list.return_value = [
             {"name": "index3", "accesses": {"ops": 75}}
         ]
         
@@ -591,6 +664,34 @@ class TestIndexManager:
         assert "content" in status
         assert status["queries"]["index_count"] == 2
         assert status["content"]["index_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_get_index_status_missing_indexstats(self, mock_database):
+        """Test index status retrieval when $indexStats is not available."""
+        # Setup mocks
+        mock_database.queries.list_indexes.return_value.to_list.return_value = [
+            {"name": "index1", "key": {"field": 1}},
+            {"name": "index2", "key": {"field2": 1}}
+        ]
+        mock_database.content.list_indexes.return_value.to_list.return_value = []
+        mock_database.processed_content.list_indexes.return_value.to_list.return_value = []
+        mock_database.query_sessions.list_indexes.return_value.to_list.return_value = []
+        mock_database.analytics.list_indexes.return_value.to_list.return_value = []
+        
+        # Mock $indexStats aggregation to raise exception (server compatibility issue)
+        mock_database.queries.aggregate.side_effect = Exception("$indexStats not supported")
+        
+        # Test
+        index_manager = IndexManager(mock_database)
+        status = await index_manager.get_index_status()
+        
+        # Assertions - should handle missing $indexStats gracefully
+        assert "queries" in status
+        assert status["queries"]["index_count"] == 2
+        # Stats should be empty dict when $indexStats fails
+        for index in status["queries"]["indexes"]:
+            assert isinstance(index["stats"], dict)
+            assert index["stats"] == {}  # Should be empty when stats unavailable
 
 
 class TestMigrationManager:
@@ -834,8 +935,8 @@ class TestDatabaseIntegration:
         
         # Execute workflow
         query_doc, session_id = await service.process_and_store_query(parsed_query, "test_session")
-        content_docs = await service.store_scraping_results([scraped_content], query_doc.id, session_id)
-        processed_docs = await service.store_processing_results([processed_content], query_doc.id, session_id)
+        content_docs, content_id_mapping = await service.store_scraping_results([scraped_content], query_doc.id, session_id)
+        processed_docs = await service.store_processing_results([processed_content], query_doc.id, content_id_mapping, session_id)
         
         # Assertions
         assert query_doc.id is not None

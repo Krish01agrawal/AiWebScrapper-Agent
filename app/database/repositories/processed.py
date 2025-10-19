@@ -23,6 +23,7 @@ class ProcessedContentRepository:
         """Initialize repository with database connection."""
         self.database = database or get_database()
         self.collection: AsyncIOMotorCollection = self.database.processed_content
+        self.cache_collection: AsyncIOMotorCollection = self.database.processed_cache
     
     async def save_processed_content(self, processed_doc: ProcessedContentDocument) -> ProcessedContentDocument:
         """Save processed content with validation and relationship management."""
@@ -80,6 +81,7 @@ class ProcessedContentRepository:
                 {"original_content_id": original_content_id}
             ).sort("processing_timestamp", -1).limit(limit)
             
+            cursor = apply_query_timeout(cursor)
             docs = await cursor.to_list(length=limit)
             return [ProcessedContentDocument(**doc) for doc in docs]
             
@@ -93,7 +95,9 @@ class ProcessedContentRepository:
     async def search_processed_content(self, search_text: str, 
                                     min_quality_score: Optional[float] = None,
                                     processing_version: Optional[str] = None,
-                                    limit: int = 20, skip: int = 0) -> List[ProcessedContentDocument]:
+                                    limit: int = 20, skip: int = 0,
+                                    start_date: Optional[datetime] = None,
+                                    end_date: Optional[datetime] = None) -> List[ProcessedContentDocument]:
         """Semantic search capabilities for processed content."""
         try:
             # Build search filter
@@ -110,6 +114,15 @@ class ProcessedContentRepository:
             # Processing version filter
             if processing_version:
                 filter_dict["processing_version"] = processing_version
+            
+            # Date filters
+            if start_date or end_date:
+                date_filter = {}
+                if start_date:
+                    date_filter["$gte"] = start_date
+                if end_date:
+                    date_filter["$lte"] = end_date
+                filter_dict["processing_timestamp"] = date_filter
             
             # Execute search
             cursor = self.collection.find(filter_dict).sort("enhanced_quality_score", -1).skip(skip).limit(limit)
@@ -250,20 +263,22 @@ class ProcessedContentRepository:
     async def cache_processed_results(self, cache_key: str, 
                                    processed_doc: ProcessedContentDocument,
                                    ttl_seconds: int = 3600) -> bool:
-        """Performance optimization through caching."""
+        """Performance optimization through caching using dedicated cache collection."""
         try:
-            # Add cache metadata
-            processed_doc.cache_key = cache_key
-            
-            # Set TTL for cache
+            # Prepare cache document
             doc_data = processed_doc.model_dump(by_alias=True, exclude={"id"})
+            doc_data["cache_key"] = cache_key
             doc_data["created_at"] = datetime.utcnow()
             doc_data["updated_at"] = datetime.utcnow()
             doc_data["expires_at"] = datetime.utcnow() + timedelta(seconds=ttl_seconds)
             
-            # Insert with TTL
+            # Use upsert to prevent duplicates
             result = await run_with_timeout_and_retries(
-                lambda: self.collection.insert_one(doc_data),
+                lambda: self.cache_collection.update_one(
+                    {"cache_key": cache_key},
+                    {"$set": doc_data},
+                    upsert=True
+                ),
                 timeout_s=settings.database_query_timeout_seconds,
                 retries=settings.database_max_retries,
             )
@@ -279,10 +294,10 @@ class ProcessedContentRepository:
             raise RuntimeError(f"Unexpected error: {str(e)}")
     
     async def get_cached_results(self, cache_key: str) -> Optional[ProcessedContentDocument]:
-        """Retrieve cached processed results."""
+        """Retrieve cached processed results from dedicated cache collection."""
         try:
             doc = await run_with_timeout_and_retries(
-                lambda: self.collection.find_one({
+                lambda: self.cache_collection.find_one({
                     "cache_key": cache_key,
                     "expires_at": {"$gt": datetime.utcnow()}
                 }),
@@ -362,39 +377,65 @@ class ProcessedContentRepository:
             raise RuntimeError(f"Unexpected error: {str(e)}")
     
     async def archive_old_results(self, days_old: int = 180) -> int:
-        """Data lifecycle management for old processed results."""
+        """Data lifecycle management for old processed results with transactional safety."""
         try:
             cutoff_date = datetime.utcnow() - timedelta(days=days_old)
+            archive_collection = self.database.processed_content_archive
             
-            # Archive old results by moving to archive collection
+            # Get old results to archive
             cursor = self.collection.find({
                 "processing_timestamp": {"$lt": cutoff_date}
             })
             cursor = apply_query_timeout(cursor)
-            old_docs = await cursor.to_list(length=None)
+            old_docs = await cursor.to_list(length=1000)
             
-            if old_docs:
-                # Insert into archive collection
-                archive_collection = self.database.processed_content_archive
-                await run_with_timeout_and_retries(
-                    lambda: archive_collection.insert_many(old_docs),
-                    timeout_s=settings.database_query_timeout_seconds,
-                    retries=settings.database_max_retries,
-                )
-                
-                # Remove from main collection
-                result = await run_with_timeout_and_retries(
-                    lambda: self.collection.delete_many({
-                        "processing_timestamp": {"$lt": cutoff_date}
-                    }),
-                    timeout_s=settings.database_query_timeout_seconds,
-                    retries=settings.database_max_retries,
-                )
-                
-                logger.info(f"Archived {result.deleted_count} old processed results")
-                return result.deleted_count
-            else:
+            if not old_docs:
                 return 0
+            
+            archived_count = 0
+            
+            # Process documents in batches for better transactional safety
+            batch_size = settings.database_batch_size
+            for i in range(0, len(old_docs), batch_size):
+                batch = old_docs[i:i + batch_size]
+                
+                try:
+                    # Upsert each document into archive collection to prevent duplication
+                    # Use _id as unique identifier to prevent duplicates on reruns
+                    for doc in batch:
+                        doc_id = doc.get("_id")
+                        if doc_id:
+                            await run_with_timeout_and_retries(
+                                lambda: archive_collection.replace_one(
+                                    {"_id": doc_id},
+                                    doc,
+                                    upsert=True
+                                ),
+                                timeout_s=settings.database_query_timeout_seconds,
+                                retries=settings.database_max_retries,
+                            )
+                            archived_count += 1
+                    
+                    # Only delete from main collection after successful archive
+                    # Use the same batch of IDs to ensure consistency
+                    doc_ids = [doc["_id"] for doc in batch if doc.get("_id")]
+                    if doc_ids:
+                        delete_result = await run_with_timeout_and_retries(
+                            lambda: self.collection.delete_many({
+                                "_id": {"$in": doc_ids}
+                            }),
+                            timeout_s=settings.database_query_timeout_seconds,
+                            retries=settings.database_max_retries,
+                        )
+                        logger.debug(f"Archived batch of {len(doc_ids)} documents")
+                        
+                except Exception as e:
+                    logger.error(f"Failed to archive batch {i//batch_size + 1}: {e}")
+                    # Continue with next batch rather than failing completely
+                    continue
+            
+            logger.info(f"Archived {archived_count} old processed results")
+            return archived_count
                 
         except OperationFailure as e:
             logger.error(f"Database operation failed: {e}")
@@ -410,6 +451,7 @@ class ProcessedContentRepository:
                 {"processing_errors": {"$ne": []}}
             ).sort("processing_timestamp", -1).skip(skip).limit(limit)
             
+            cursor = apply_query_timeout(cursor)
             docs = await cursor.to_list(length=limit)
             return [
                 {
@@ -519,7 +561,7 @@ class ProcessedContentRepository:
             )
             
             # Test index status
-            indexes = await self.collection.list_indexes().to_list(length=None)
+            indexes = await self.collection.list_indexes().to_list(length=1000)
             
             # Test aggregation
             analytics = await self.get_analytics_data()

@@ -210,7 +210,7 @@ class MigrationManager:
         try:
             # Create collections
             collections = [
-                "queries", "content", "processed_content", 
+                "queries", "content", "processed_content", "processed_cache",
                 "query_sessions", "analytics", "migrations"
             ]
             
@@ -231,7 +231,7 @@ class MigrationManager:
         try:
             # Drop collections (be careful in production!)
             collections = [
-                "queries", "content", "processed_content", 
+                "queries", "content", "processed_content", "processed_cache",
                 "query_sessions", "analytics"
             ]
             
@@ -285,7 +285,7 @@ class MigrationManager:
             
             for collection_name in collections:
                 collection = self.database[collection_name]
-                indexes = await collection.list_indexes().to_list(length=None)
+                indexes = await collection.list_indexes().to_list(length=1000)
                 
                 for index in indexes:
                     if index.get("key", {}).get("_fts") == "text":
@@ -303,15 +303,19 @@ class MigrationManager:
         """Add TTL indexes for automatic data cleanup."""
         try:
             # TTL indexes for automatic cleanup
-            ttl_indexes = {
-                "content": {
+            ttl_indexes = {}
+            
+            # Only add content TTL if enabled
+            if settings.database_content_ttl_days > 0 and getattr(settings, 'database_enable_content_ttl', False):
+                ttl_indexes["content"] = {
                     "field": "timestamp",
                     "expire_after_seconds": settings.database_content_ttl_days * 24 * 60 * 60
-                },
-                "analytics": {
-                    "field": "period_start",
-                    "expire_after_seconds": settings.database_analytics_retention_days * 24 * 60 * 60
                 }
+            
+            # Always add analytics TTL
+            ttl_indexes["analytics"] = {
+                "field": "period_start",
+                "expire_after_seconds": settings.database_analytics_retention_days * 24 * 60 * 60
             }
             
             for collection_name, config in ttl_indexes.items():
@@ -337,7 +341,7 @@ class MigrationManager:
             
             for collection_name in collections:
                 collection = self.database[collection_name]
-                indexes = await collection.list_indexes().to_list(length=None)
+                indexes = await collection.list_indexes().to_list(length=1000)
                 
                 for index in indexes:
                     if index.get("expireAfterSeconds"):
@@ -402,7 +406,7 @@ class MigrationManager:
             
             for collection_name in collections:
                 collection = self.database[collection_name]
-                indexes = await collection.list_indexes().to_list(length=None)
+                indexes = await collection.list_indexes().to_list(length=1000)
                 
                 for index in indexes:
                     # Drop compound indexes (those with multiple fields)
@@ -507,7 +511,7 @@ class MigrationManager:
             
             # Check if all required collections exist
             required_collections = [
-                "queries", "content", "processed_content", 
+                "queries", "content", "processed_content", "processed_cache",
                 "query_sessions", "analytics", "migrations"
             ]
             
@@ -522,7 +526,7 @@ class MigrationManager:
             validation_results["indexes"] = {}
             for collection_name in existing_collections:
                 collection = self.database[collection_name]
-                indexes = await collection.list_indexes().to_list(length=None)
+                indexes = await collection.list_indexes().to_list(length=1000)
                 validation_results["indexes"][collection_name] = {
                     "count": len(indexes),
                     "indexes": [idx["name"] for idx in indexes]
@@ -531,7 +535,7 @@ class MigrationManager:
             # Check migration status
             validation_results["migrations"] = {
                 "current_version": await self.get_migration_status(),
-                "applied_migrations": await self.migrations_collection.find().to_list(length=None)
+                "applied_migrations": await self.migrations_collection.find().to_list(length=1000)
             }
             
             return validation_results
@@ -549,7 +553,7 @@ class MigrationManager:
             backup_data = {}
             for collection_name in await self.database.list_collection_names():
                 collection = self.database[collection_name]
-                documents = await collection.find().to_list(length=None)
+                documents = await collection.find().to_list(length=1000)
                 backup_data[collection_name] = documents
             
             # Store backup (in production, this should be stored externally)
@@ -581,7 +585,7 @@ class MigrationManager:
             
             # Check if all required collections exist
             required_collections = [
-                "queries", "content", "processed_content", 
+                "queries", "content", "processed_content", "processed_cache",
                 "query_sessions", "analytics", "migrations"
             ]
             existing_collections = await self.database.list_collection_names()

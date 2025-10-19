@@ -145,6 +145,7 @@ class ProcessedContent(BaseModel):
     processing_errors: List[str] = Field(default_factory=list, description="Any errors encountered during processing")
     
     model_config = {
+        "arbitrary_types_allowed": True,
         "json_schema_extra": {
             "example": {
                 "original_content": {

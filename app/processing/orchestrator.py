@@ -233,7 +233,6 @@ class ProcessingOrchestrator(BaseAgent):
     async def execute(self, scraped_contents: List[ScrapedContent], query: ParsedQuery, config: Optional[ProcessingConfig] = None) -> ProcessingResult:
         """Execute the agent's main functionality."""
         if config is None:
-            from app.processing.schemas import ProcessingConfig
             config = ProcessingConfig.from_settings(self.settings)
         return await self.process_scraped_content(scraped_contents, query, config)
     

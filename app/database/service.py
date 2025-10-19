@@ -15,7 +15,9 @@ from app.database.repositories.processed import ProcessedContentRepository
 from app.database.repositories.analytics import AnalyticsRepository
 from app.database.models import (
     QueryDocument, ScrapedContentDocument, ProcessedContentDocument,
-    QuerySessionDocument, AnalyticsDocument, DocumentStatus
+    QuerySessionDocument, AnalyticsDocument, DocumentStatus,
+    convert_parsed_query_to_document, convert_scraped_content_to_document,
+    convert_processed_content_to_document
 )
 from app.agents.schemas import ParsedQuery
 from app.scraper.schemas import ScrapedContent
@@ -40,14 +42,9 @@ class DatabaseService:
                                     user_id: Optional[str] = None) -> Tuple[QueryDocument, str]:
         """Handle the complete query storage workflow."""
         try:
-            # Convert ParsedQuery to QueryDocument
-            query_doc = QueryDocument(
-                base_result=parsed_query.base_result.model_dump(),
-                ai_tools_data=parsed_query.ai_tools_data.model_dump() if parsed_query.ai_tools_data else None,
-                mutual_funds_data=parsed_query.mutual_funds_data.model_dump() if parsed_query.mutual_funds_data else None,
-                general_data=parsed_query.general_data.model_dump() if parsed_query.general_data else None,
-                raw_entities=parsed_query.raw_entities,
-                suggestions=parsed_query.suggestions,
+            # Convert ParsedQuery to QueryDocument using helper function
+            query_doc = convert_parsed_query_to_document(
+                parsed_query,
                 session_id=session_id,
                 user_id=user_id,
                 status="pending"
@@ -71,27 +68,11 @@ class DatabaseService:
                                    query_id: ObjectId, session_id: Optional[str] = None) -> Tuple[List[ScrapedContentDocument], Dict[str, ObjectId]]:
         """Batch storage of scraped content."""
         try:
-            # Convert ScrapedContent to ScrapedContentDocument
+            # Convert ScrapedContent to ScrapedContentDocument using helper function
             content_docs = []
             for content in scraped_content_list:
-                content_doc = ScrapedContentDocument(
-                    url=str(content.url),
-                    title=content.title,
-                    content=content.content,
-                    content_type=content.content_type.value,
-                    author=content.author,
-                    publish_date=content.publish_date,
-                    description=content.description,
-                    keywords=content.keywords,
-                    images=content.images,
-                    links=content.links,
-                    timestamp=content.timestamp,
-                    processing_time=content.processing_time,
-                    content_size_bytes=content.content_size_bytes,
-                    relevance_score=content.relevance_score,
-                    content_quality_score=content.content_quality_score,
-                    extraction_method=content.extraction_method,
-                    fallback_used=content.fallback_used,
+                content_doc = convert_scraped_content_to_document(
+                    content,
                     query_id=query_id,
                     session_id=session_id
                 )
@@ -167,20 +148,11 @@ class DatabaseService:
                     logger.warning(f"No original content ID found for processed content. Skipping persistence.")
                     continue
                 
-                processed_doc = ProcessedContentDocument(
+                processed_doc = convert_processed_content_to_document(
+                    content,
                     original_content_id=original_content_id,
                     query_id=query_id,
-                    session_id=session_id,
-                    cleaned_content=content.cleaned_content,
-                    summary=content.summary.model_dump(),
-                    structured_data=content.structured_data.model_dump(),
-                    ai_insights=content.ai_insights.model_dump() if content.ai_insights else None,
-                    duplicate_analysis=content.duplicate_analysis.model_dump() if content.duplicate_analysis else None,
-                    processing_timestamp=content.processing_timestamp,
-                    processing_duration=content.processing_duration,
-                    enhanced_quality_score=content.enhanced_quality_score,
-                    processing_errors=content.processing_errors,
-                    processing_version="1.0"
+                    session_id=session_id
                 )
                 processed_docs.append(processed_doc)
             
@@ -282,7 +254,10 @@ class DatabaseService:
             # Cache the processed results if caching is enabled
             if settings.database_enable_caching and processed:
                 cache_key = f"query_results_{query_id}"
-                # Cache the first processed result (or create a combined cache entry)
+                # CACHING STRATEGY: We cache only the first processed result for performance.
+                # This is a trade-off between cache efficiency and completeness. For multi-item
+                # results, consider implementing a compact summary/ID list cache or expanding
+                # cache_processed_results() to handle multiple documents.
                 if processed:
                     await self.processed_repo.cache_processed_results(
                         cache_key, 
@@ -307,21 +282,23 @@ class DatabaseService:
         try:
             results = {}
             
-            # Search queries
+            # Search queries with date range filtering
             queries = await self.query_repo.search_queries(
-                search_text, category=category, limit=limit
+                search_text, category=category, limit=limit,
+                start_date=start_date, end_date=end_date
             )
             results["queries"] = queries
             
-            # Search content
+            # Search content with date range filtering
             content = await self.content_repo.search_content(
-                search_text, content_type=content_type, limit=limit
+                search_text, content_type=content_type, limit=limit,
+                start_date=start_date, end_date=end_date
             )
             results["content"] = content
             
-            # Search processed content
+            # Search processed content with date range filtering
             processed = await self.processed_repo.search_processed_content(
-                search_text, limit=limit
+                search_text, limit=limit, start_date=start_date, end_date=end_date
             )
             results["processed_content"] = processed
             

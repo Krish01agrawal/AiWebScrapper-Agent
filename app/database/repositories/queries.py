@@ -99,6 +99,7 @@ class QueryRepository:
                 filter_dict["user_id"] = user_id
             
             cursor = self.collection.find(filter_dict).sort("created_at", -1).skip(skip).limit(limit)
+            cursor = apply_query_timeout(cursor)
             docs = await cursor.to_list(length=limit)
             return [QueryDocument(**doc) for doc in docs]
             
@@ -162,7 +163,8 @@ class QueryRepository:
     
     async def search_queries(self, search_text: str, category: Optional[str] = None,
                            user_id: Optional[str] = None, limit: int = 20, 
-                           skip: int = 0) -> List[QueryDocument]:
+                           skip: int = 0, start_date: Optional[datetime] = None,
+                           end_date: Optional[datetime] = None) -> List[QueryDocument]:
         """Search queries with text search and filtering capabilities."""
         try:
             # Build search filter
@@ -180,8 +182,18 @@ class QueryRepository:
             if user_id:
                 filter_dict["user_id"] = user_id
             
+            # Date filters
+            if start_date or end_date:
+                date_filter = {}
+                if start_date:
+                    date_filter["$gte"] = start_date
+                if end_date:
+                    date_filter["$lte"] = end_date
+                filter_dict["created_at"] = date_filter
+            
             # Execute search
             cursor = self.collection.find(filter_dict).sort("created_at", -1).skip(skip).limit(limit)
+            cursor = apply_query_timeout(cursor)
             docs = await cursor.to_list(length=limit)
             return [QueryDocument(**doc) for doc in docs]
             
@@ -277,6 +289,7 @@ class QueryRepository:
                 {"base_result.category": category}
             ).sort("created_at", -1).skip(skip).limit(limit)
             
+            cursor = apply_query_timeout(cursor)
             docs = await cursor.to_list(length=limit)
             return [QueryDocument(**doc) for doc in docs]
             
@@ -334,7 +347,7 @@ class QueryRepository:
             )
             
             # Test index status
-            indexes = await self.collection.list_indexes().to_list(length=None)
+            indexes = await self.collection.list_indexes().to_list(length=1000)
             
             end_time = datetime.utcnow()
             response_time = (end_time - start_time).total_seconds()

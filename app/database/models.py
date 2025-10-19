@@ -194,6 +194,7 @@ class ProcessedContentDocument(BaseDocument):
     # Database-specific fields
     processing_version: str = Field(default="1.0", description="Version of processing pipeline used")
     cache_key: Optional[str] = Field(None, description="Cache key for processed results")
+    expires_at: Optional[datetime] = Field(None, description="Cache expiration timestamp for cached documents")
     
     # Performance metrics
     memory_usage_mb: Optional[float] = Field(None, ge=0.0, description="Memory usage during processing")

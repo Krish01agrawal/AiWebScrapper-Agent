@@ -23,6 +23,7 @@ class IndexManager:
             "queries": self.database.queries,
             "content": self.database.content,
             "processed_content": self.database.processed_content,
+            "processed_cache": self.database.processed_cache,
             "query_sessions": self.database.query_sessions,
             "analytics": self.database.analytics
         }
@@ -36,6 +37,7 @@ class IndexManager:
             results["queries"] = await self._create_query_indexes()
             results["content"] = await self._create_content_indexes()
             results["processed_content"] = await self._create_processed_content_indexes()
+            results["processed_cache"] = await self._create_processed_cache_indexes()
             results["query_sessions"] = await self._create_session_indexes()
             results["analytics"] = await self._create_analytics_indexes()
             
@@ -53,6 +55,7 @@ class IndexManager:
         
         try:
             # Session and user indexes
+            # Note: background parameter is ignored in MongoDB 4.2+ but kept for compatibility
             bg = settings.database_index_background
             indexes.append(await collection.create_index("session_id", background=bg))
             indexes.append(await collection.create_index("user_id", background=bg))
@@ -106,6 +109,7 @@ class IndexManager:
         indexes = []
         
         try:
+            # Note: background parameter is ignored in MongoDB 4.2+ but kept for compatibility
             bg = settings.database_index_background
             # Query and session indexes
             indexes.append(await collection.create_index("query_id", background=bg))
@@ -156,12 +160,17 @@ class IndexManager:
             ], background=bg))
             
             # TTL index for automatic cleanup
-            if settings.database_content_ttl_days > 0:
-                indexes.append(await collection.create_index(
-                    "timestamp",
-                    expireAfterSeconds=settings.database_content_ttl_days * 24 * 60 * 60,
-                    background=bg
-                ))
+            # POLICY: We rely on ScrapedContentRepository.cleanup_old_content() for duplicates only
+            # to avoid dangling references from processed documents. The global TTL on content.timestamp
+            # is disabled to prevent automatic deletion of originals that are referenced by processed docs.
+            # Instead, we use DATABASE_ANALYTICS_RETENTION_DAYS and archiving in ProcessedContentRepository
+            # to ensure processed docs are archived/removed before originals can expire.
+            # if settings.database_content_ttl_days > 0:
+            #     indexes.append(await collection.create_index(
+            #         "timestamp",
+            #         expireAfterSeconds=settings.database_content_ttl_days * 24 * 60 * 60,
+            #         background=bg
+            #     ))
             
             logger.info(f"Created {len(indexes)} indexes for content collection")
             return indexes
@@ -176,6 +185,7 @@ class IndexManager:
         indexes = []
         
         try:
+            # Note: background parameter is ignored in MongoDB 4.2+ but kept for compatibility
             bg = settings.database_index_background
             # Reference indexes
             indexes.append(await collection.create_index("original_content_id", background=bg))
@@ -240,12 +250,48 @@ class IndexManager:
             logger.error(f"Failed to create processed content indexes: {e}")
             raise RuntimeError(f"Processed content index creation failed: {str(e)}")
     
+    async def _create_processed_cache_indexes(self) -> List[str]:
+        """Create indexes for processed cache collection."""
+        collection = self.collections["processed_cache"]
+        indexes = []
+        
+        try:
+            # Note: background parameter is ignored in MongoDB 4.2+ but kept for compatibility
+            bg = settings.database_index_background
+            
+            # Cache key index (unique)
+            indexes.append(await collection.create_index("cache_key", unique=True, background=bg))
+            
+            # TTL index for cache expiration
+            if settings.database_cache_ttl_seconds > 0:
+                indexes.append(await collection.create_index(
+                    "expires_at",
+                    expireAfterSeconds=0,  # TTL is set in document
+                    background=bg
+                ))
+            
+            # Reference indexes for cache lookup
+            indexes.append(await collection.create_index("original_content_id", background=bg))
+            indexes.append(await collection.create_index("query_id", background=bg))
+            
+            # Timestamp indexes
+            indexes.append(await collection.create_index("created_at", background=bg))
+            indexes.append(await collection.create_index("updated_at", background=bg))
+            
+            logger.info(f"Created {len(indexes)} indexes for processed cache collection")
+            return indexes
+            
+        except OperationFailure as e:
+            logger.error(f"Failed to create processed cache indexes: {e}")
+            raise RuntimeError(f"Processed cache index creation failed: {str(e)}")
+    
     async def _create_session_indexes(self) -> List[str]:
         """Create indexes for query sessions collection."""
         collection = self.collections["query_sessions"]
         indexes = []
         
         try:
+            # Note: background parameter is ignored in MongoDB 4.2+ but kept for compatibility
             bg = settings.database_index_background
             # Primary indexes
             indexes.append(await collection.create_index("session_id", unique=True, background=bg))
@@ -297,6 +343,7 @@ class IndexManager:
         indexes = []
         
         try:
+            # Note: background parameter is ignored in MongoDB 4.2+ but kept for compatibility
             bg = settings.database_index_background
             # Time period indexes
             indexes.append(await collection.create_index("period_start", background=bg))
@@ -354,25 +401,34 @@ class IndexManager:
         
         try:
             for collection_name, collection in self.collections.items():
-                indexes = await collection.list_indexes().to_list(length=None)
+                indexes = await collection.list_indexes().to_list(length=1000)
                 
                 # Get index statistics
                 index_stats = []
                 try:
                     stats_result = await collection.aggregate([{"$indexStats": {}}]).to_list(None)
-                    stats_dict = {stat["name"]: stat for stat in stats_result}
+                    # Ensure stats_result is a list and each stat has proper structure
+                    if isinstance(stats_result, list):
+                        stats_dict = {stat.get("name", "unknown"): stat for stat in stats_result if isinstance(stat, dict)}
+                    else:
+                        stats_dict = {}
                 except Exception as e:
                     logger.warning(f"Could not get index stats for {collection_name}: {e}")
                     stats_dict = {}
                 
                 for index in indexes:
+                    # Ensure stats is always a dict, even if index stats are missing
+                    index_stat_data = stats_dict.get(index["name"], {})
+                    if not isinstance(index_stat_data, dict):
+                        index_stat_data = {}
+                    
                     index_stat = {
                         "name": index["name"],
                         "key": index["key"],
                         "unique": index.get("unique", False),
                         "background": index.get("background", False),
                         "expireAfterSeconds": index.get("expireAfterSeconds"),
-                        "stats": stats_dict.get(index["name"], {})
+                        "stats": index_stat_data
                     }
                     index_stats.append(index_stat)
                 
@@ -466,7 +522,7 @@ class IndexManager:
             
             for collection_name, collection in self.collections.items():
                 try:
-                    indexes = await collection.list_indexes().to_list(length=None)
+                    indexes = await collection.list_indexes().to_list(length=1000)
                     health_status[collection_name] = {
                         "status": "healthy",
                         "index_count": len(indexes),

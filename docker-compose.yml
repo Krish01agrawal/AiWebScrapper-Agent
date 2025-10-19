@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: traycer-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-changeme}
+      MONGO_INITDB_DATABASE: traycer_try
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - traycer-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: traycer-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # MongoDB Configuration
+      MONGODB_URI: mongodb://admin:${MONGODB_PASSWORD:-changeme}@mongodb:27017/traycer_try?authSource=admin
+      MONGODB_DB: traycer_try
+      
+      # Gemini API
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      
+      # Application Settings
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+      DEBUG: false
+      LOG_FORMAT: json
+      LOG_FILE: /app/logs/app.log
+      
+      # Authentication
+      API_AUTH_ENABLED: ${API_AUTH_ENABLED:-true}
+      API_KEYS: ${API_KEYS:-}
+      
+      # Caching
+      CACHE_ENABLED: true
+      CACHE_TTL_SECONDS: 300
+      
+      # Performance
+      WORKERS: 4
+      MAX_CONNECTIONS: 1000
+      
+      # Security
+      SECRET_KEY: ${SECRET_KEY:-change_me_in_production}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8000}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - traycer-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MongoDB Express (Optional - for development)
+  mongo-express:
+    image: mongo-express:latest
+    container_name: traycer-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGODB_PASSWORD:-changeme}
+      ME_CONFIG_MONGODB_URL: mongodb://admin:${MONGODB_PASSWORD:-changeme}@mongodb:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USER:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:-admin}
+    depends_on:
+      - mongodb
+    networks:
+      - traycer-network
+    profiles:
+      - dev
+
+networks:
+  traycer-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local

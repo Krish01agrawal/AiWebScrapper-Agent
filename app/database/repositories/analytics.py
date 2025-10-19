@@ -458,20 +458,19 @@ class AnalyticsRepository:
                 "period_type": "daily"
             })
             cursor = apply_query_timeout(cursor)
-            analytics_data = await cursor.to_list(length=None)
+            analytics_data = await cursor.to_list(length=1000)
             
             # Aggregate daily data
             total_queries = sum(doc["total_queries"] for doc in analytics_data)
             total_sessions = sum(doc["unique_sessions"] for doc in analytics_data)
             
             # Compute distinct users across the period via query on query_sessions
-            distinct_users_cursor = self.sessions_collection.find({
-                "start_time": {"$gte": start_date, "$lt": end_date},
-                "user_id": {"$ne": None}
-            }).distinct("user_id")
-            distinct_users_cursor = apply_query_timeout(distinct_users_cursor)
-            distinct_users = await distinct_users_cursor.to_list(length=None)
-            total_users = len(distinct_users)
+            distinct_users = await self.sessions_collection.distinct(
+                "user_id",
+                {"start_time": {"$gte": start_date, "$lt": end_date}, "user_id": {"$ne": None}}
+            )
+            # ensure list and unique count
+            total_users = len({u for u in distinct_users if u is not None})
             
             return {
                 "report_type": "daily",
@@ -651,8 +650,8 @@ class AnalyticsRepository:
             )
             
             # Test index status
-            sessions_indexes = await self.sessions_collection.list_indexes().to_list(length=None)
-            analytics_indexes = await self.analytics_collection.list_indexes().to_list(length=None)
+            sessions_indexes = await self.sessions_collection.list_indexes().to_list(length=1000)
+            analytics_indexes = await self.analytics_collection.list_indexes().to_list(length=1000)
             
             end_time = datetime.utcnow()
             response_time = (end_time - start_time).total_seconds()

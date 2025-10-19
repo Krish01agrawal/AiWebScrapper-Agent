@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.core.database import get_client
@@ -14,6 +15,7 @@ from app.scraper.session import test_scraper_session
 from app.scraper.schemas import ScrapedContent, ContentType
 from app.agents.schemas import ParsedQuery, BaseQueryResult, QueryCategory
 from app.core.config import get_settings
+from app.utils.health import get_health_checker, HealthStatus
 from app.dependencies import (
     get_query_repository, get_content_repository, get_processed_repository,
     get_analytics_repository, get_database_service
@@ -65,14 +67,194 @@ class ProcessingHealthResponse(BaseModel):
     performance_metrics: Dict[str, Any]
 
 
-@router.get("/", response_model=HealthResponse)
-async def health_check() -> HealthResponse:
-    """Basic health check endpoint."""
-    return HealthResponse(
-        status="ok",
-        timestamp=datetime.utcnow(),
-        message="Application is running"
-    )
+@router.get("/", response_model=Dict[str, Any])
+async def health_check() -> Dict[str, Any]:
+    """Comprehensive health check endpoint."""
+    try:
+        health_checker = get_health_checker()
+        health_status = await health_checker.check_all()
+        
+        # Return appropriate HTTP status code based on health
+        if health_status["status"] == HealthStatus.UNHEALTHY:
+            return JSONResponse(
+                content=health_status,
+                status_code=503
+            )
+        elif health_status["status"] == HealthStatus.DEGRADED:
+            return JSONResponse(
+                content=health_status,
+                status_code=200
+            )
+        else:
+            return health_status
+    
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "status": HealthStatus.UNHEALTHY,
+                "timestamp": datetime.utcnow().isoformat(),
+                "error": str(e),
+                "uptime_seconds": 0
+            },
+            status_code=503
+        )
+
+
+@router.get("/live")
+async def liveness_probe() -> Dict[str, Any]:
+    """Kubernetes liveness probe endpoint."""
+    try:
+        health_checker = get_health_checker()
+        is_alive = await health_checker.liveness_check()
+        
+        return {
+            "status": "alive" if is_alive else "dead",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "status": "dead",
+                "timestamp": datetime.utcnow().isoformat(),
+                "error": str(e)
+            },
+            status_code=503
+        )
+
+
+@router.get("/ready")
+async def readiness_probe() -> Dict[str, Any]:
+    """Kubernetes readiness probe endpoint."""
+    try:
+        health_checker = get_health_checker()
+        is_ready = await health_checker.readiness_check()
+        
+        if not is_ready:
+            return JSONResponse(
+                content={
+                    "status": "not_ready",
+                    "message": "Service not ready",
+                    "timestamp": datetime.utcnow().isoformat()
+                },
+                status_code=503
+            )
+        
+        return {
+            "status": "ready",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "status": "not_ready",
+                "timestamp": datetime.utcnow().isoformat(),
+                "error": str(e)
+            },
+            status_code=503
+        )
+
+
+@router.get("/components")
+async def component_health() -> Dict[str, Any]:
+    """Detailed health check for each component."""
+    try:
+        health_checker = get_health_checker()
+        health_status = await health_checker.check_all()
+        
+        return {
+            "overall_status": health_status["status"],
+            "components": health_status["components"],
+            "timestamp": health_status["timestamp"]
+        }
+    
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "overall_status": HealthStatus.UNHEALTHY,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            },
+            status_code=503
+        )
+
+
+@router.get("/database")
+async def database_health() -> Dict[str, Any]:
+    """Detailed database health check."""
+    try:
+        health_checker = get_health_checker()
+        db_health = await health_checker.check_database()
+        
+        return {
+            "status": db_health.status,
+            "response_time_ms": db_health.response_time_ms,
+            "details": db_health.details,
+            "message": db_health.message,
+            "timestamp": db_health.last_check.isoformat()
+        }
+    
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "status": HealthStatus.UNHEALTHY,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            },
+            status_code=503
+        )
+
+
+@router.get("/cache")
+async def cache_health() -> Dict[str, Any]:
+    """Cache system health and statistics."""
+    try:
+        health_checker = get_health_checker()
+        cache_health = await health_checker.check_cache()
+        
+        return {
+            "status": cache_health.status,
+            "response_time_ms": cache_health.response_time_ms,
+            "statistics": cache_health.details,
+            "message": cache_health.message,
+            "timestamp": cache_health.last_check.isoformat()
+        }
+    
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "status": HealthStatus.UNHEALTHY,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            },
+            status_code=503
+        )
+
+
+@router.get("/system")
+async def system_health() -> Dict[str, Any]:
+    """System resource health check."""
+    try:
+        health_checker = get_health_checker()
+        system_health = health_checker.check_system_resources()
+        
+        return {
+            "status": system_health.status,
+            "resources": system_health.details,
+            "message": system_health.message,
+            "timestamp": system_health.last_check.isoformat()
+        }
+    
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "status": HealthStatus.UNHEALTHY,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            },
+            status_code=503
+        )
 
 
 @router.get("/db", response_model=DatabaseHealthResponse)

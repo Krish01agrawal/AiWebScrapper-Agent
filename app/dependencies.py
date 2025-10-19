@@ -1,14 +1,16 @@
 """
 Shared dependency functions for FastAPI application.
 """
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 from functools import lru_cache
-from fastapi import Depends
+from fastapi import Depends, Request, HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import google.generativeai as genai
 
 from app.core.database import get_database
 from app.core.gemini import get_gemini_model, GeminiClient
+from app.core.cache import InMemoryCache, get_cache
+from app.core.auth import APIKeyManager, get_api_key_manager, APIKey
 from app.agents.processor import QueryProcessor
 from app.agents.parsers import NaturalLanguageParser
 from app.agents.categorizer import DomainCategorizer
@@ -31,6 +33,9 @@ from app.database.repositories.content import ScrapedContentRepository
 from app.database.repositories.processed import ProcessedContentRepository
 from app.database.repositories.analytics import AnalyticsRepository
 from app.database.service import DatabaseService
+
+# Services dependencies
+from app.services.orchestration import WorkflowOrchestrator
 
 
 @lru_cache(maxsize=1)
@@ -332,3 +337,106 @@ ContentRepositoryDep = Annotated[ScrapedContentRepository, Depends(get_content_r
 ProcessedRepositoryDep = Annotated[ProcessedContentRepository, Depends(get_processed_repository)]
 AnalyticsRepositoryDep = Annotated[AnalyticsRepository, Depends(get_analytics_repository)]
 DatabaseServiceDep = Annotated[DatabaseService, Depends(get_database_service)]
+
+
+async def get_workflow_orchestrator() -> WorkflowOrchestrator:
+    """Get WorkflowOrchestrator instance with all required dependencies."""
+    try:
+        query_processor = await get_query_processor()
+        scraper_orchestrator = await get_scraper_orchestrator()
+        processing_orchestrator = await get_processing_orchestrator()
+        database_service = await get_database_service()
+        
+        return WorkflowOrchestrator(
+            query_processor=query_processor,
+            scraper_orchestrator=scraper_orchestrator,
+            processing_orchestrator=processing_orchestrator,
+            database_service=database_service
+        )
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503,
+            detail=f"Workflow orchestrator unavailable: {str(e)}"
+        )
+
+
+# Services type aliases
+WorkflowOrchestratorDep = Annotated[WorkflowOrchestrator, Depends(get_workflow_orchestrator)]
+
+
+# Cache dependencies
+def get_cache_dep(request: Request) -> Optional[InMemoryCache]:
+    """Get cache instance from application state."""
+    return getattr(request.app.state, "cache", None)
+
+
+def get_api_key_manager_dep(request: Request) -> Optional[APIKeyManager]:
+    """Get API key manager from application state."""
+    return getattr(request.app.state, "api_key_manager", None)
+
+
+async def get_current_api_key(request: Request) -> Optional[APIKey]:
+    """Get current authenticated API key from request state."""
+    return getattr(request.state, "api_key", None)
+
+
+def require_permission(permission: str):
+    """Create dependency that requires specific permission."""
+    async def check_permission(api_key: Optional[APIKey] = Depends(get_current_api_key)):
+        if not api_key:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if not api_key.check_permission(permission):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permission '{permission}' required"
+            )
+        return api_key
+    return check_permission
+
+
+async def check_rate_limit(request: Request, api_key: Optional[APIKey] = Depends(get_current_api_key)):
+    """Check rate limit for current request."""
+    manager = getattr(request.app.state, "api_key_manager", None)
+    if not manager:
+        return
+    
+    if api_key:
+        if not manager.check_rate_limit(api_key.key_id):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        manager.record_request(api_key.key_id)
+    else:
+        # Use IP-based rate limiting for unauthenticated requests
+        client_ip = request.client.host if request.client else "unknown"
+        # This would need to be implemented in the rate limiting middleware
+        pass
+
+
+# Type aliases for new dependencies
+CacheDep = Annotated[Optional[InMemoryCache], Depends(get_cache_dep)]
+APIKeyManagerDep = Annotated[Optional[APIKeyManager], Depends(get_api_key_manager_dep)]
+CurrentAPIKeyDep = Annotated[Optional[APIKey], Depends(get_current_api_key)]
+
+
+# Export all dependencies
+__all__ = [
+    # Database dependencies
+    "DatabaseDep", "GeminiDep", "GeminiClientDep",
+    # Agent dependencies
+    "QueryProcessorDep", "NLParserDep", "CategorizerDep",
+    # Scraper dependencies
+    "ScraperSessionDep", "SiteDiscoveryDep", "ContentExtractorDep", "ScraperOrchestratorDep",
+    # Processing dependencies
+    "ContentCleaningDep", "AIAnalysisDep", "SummarizationDep", "StructuredExtractionDep",
+    "DuplicateDetectionDep", "ProcessingOrchestratorDep",
+    # Database repository dependencies
+    "QueryRepositoryDep", "ContentRepositoryDep", "ProcessedRepositoryDep",
+    "AnalyticsRepositoryDep", "DatabaseServiceDep",
+    # Service dependencies
+    "WorkflowOrchestratorDep",
+    # New dependencies
+    "CacheDep", "APIKeyManagerDep", "CurrentAPIKeyDep",
+    # Dependency functions
+    "get_cache_dep", "get_api_key_manager_dep", "get_current_api_key",
+    "require_permission", "check_rate_limit"
+]

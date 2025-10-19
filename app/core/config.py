@@ -220,6 +220,10 @@ class Settings(BaseSettings):
         default=90,
         description="Automatic content cleanup TTL in days"
     )
+    database_enable_content_ttl: bool = Field(
+        default=False,
+        description="Enable automatic content TTL cleanup (disabled by default to prevent data loss)"
+    )
     database_analytics_retention_days: int = Field(
         default=365,
         description="Analytics data retention period in days"
@@ -259,6 +263,48 @@ class Settings(BaseSettings):
         description="Timeout for processing tests in health checks (seconds)"
     )
     
+    # API Configuration
+    api_request_timeout_seconds: int = Field(
+        default=300,
+        description="Maximum request processing time for API endpoints"
+    )
+    api_max_query_length: int = Field(
+        default=1000,
+        description="Maximum length for query text in API requests"
+    )
+    api_max_results_per_request: int = Field(
+        default=50,
+        description="Maximum number of results to return per API request"
+    )
+    api_enable_request_logging: bool = Field(
+        default=True,
+        description="Enable detailed request logging for API endpoints"
+    )
+    api_enable_analytics_tracking: bool = Field(
+        default=True,
+        description="Enable usage analytics tracking for API requests"
+    )
+    api_rate_limit_requests_per_minute: int = Field(
+        default=60,
+        description="Basic rate limiting for API requests per minute"
+    )
+    api_enable_detailed_errors: bool = Field(
+        default=True,
+        description="Enable detailed error responses (disable in production for security)"
+    )
+    api_enable_progress_tracking: bool = Field(
+        default=True,
+        description="Enable workflow progress tracking and reporting"
+    )
+    api_default_processing_config: bool = Field(
+        default=True,
+        description="Use default processing configuration when none provided"
+    )
+    api_enable_database_storage: bool = Field(
+        default=True,
+        description="Enable automatic database storage of query results"
+    )
+    
     # Application Settings
     environment: str = Field(
         default="development",
@@ -283,6 +329,100 @@ class Settings(BaseSettings):
     allowed_origins: List[str] = Field(
         default=["http://localhost:3000", "http://localhost:8000"],
         description="Comma-separated list of allowed origins"
+    )
+    
+    # Authentication Configuration
+    api_auth_enabled: bool = Field(
+        default=False,
+        description="Enable API key authentication"
+    )
+    api_keys: str = Field(
+        default="",
+        description="Comma-separated API keys in format: key:name:permissions"
+    )
+    api_key_rate_limit_per_minute: int = Field(
+        default=120,
+        description="Rate limit per API key per minute"
+    )
+    api_public_endpoints: List[str] = Field(
+        default=["/health", "/docs", "/redoc", "/openapi.json", "/"],
+        description="Endpoints that don't require authentication"
+    )
+    
+    # Cache Configuration
+    cache_enabled: bool = Field(
+        default=True,
+        description="Enable in-memory caching"
+    )
+    cache_ttl_seconds: int = Field(
+        default=300,
+        description="Default cache TTL in seconds"
+    )
+    cache_max_size: int = Field(
+        default=1000,
+        description="Maximum number of cached items"
+    )
+    cache_response_enabled: bool = Field(
+        default=True,
+        description="Enable response caching for API endpoints (deprecated, use cache_enabled)"
+    )
+    
+    # Logging Configuration
+    log_format: str = Field(
+        default="json",
+        description="Log format: json or text"
+    )
+    log_file: Optional[str] = Field(
+        default=None,
+        description="Log file path (None for console only)"
+    )
+    log_max_bytes: int = Field(
+        default=10485760,
+        description="Maximum log file size in bytes (10MB)"
+    )
+    log_backup_count: int = Field(
+        default=5,
+        description="Number of backup log files to keep"
+    )
+    log_request_body: bool = Field(
+        default=False,
+        description="Log request body (disable in production for security)"
+    )
+    log_response_body: bool = Field(
+        default=False,
+        description="Log response body (disable in production for performance)"
+    )
+    
+    # Monitoring Configuration
+    metrics_enabled: bool = Field(
+        default=True,
+        description="Enable metrics collection"
+    )
+    metrics_export_format: str = Field(
+        default="prometheus",
+        description="Metrics export format: prometheus or json"
+    )
+    health_check_interval_seconds: int = Field(
+        default=60,
+        description="Health check interval for background monitoring"
+    )
+    
+    # Production Configuration
+    workers: int = Field(
+        default=4,
+        description="Number of worker processes for production"
+    )
+    max_connections: int = Field(
+        default=1000,
+        description="Maximum concurrent connections"
+    )
+    trusted_hosts: List[str] = Field(
+        default=["*"],
+        description="Trusted host headers"
+    )
+    enable_compression: bool = Field(
+        default=True,
+        description="Enable gzip compression for responses"
     )
     
     # Field validators with consistent error message format
@@ -567,6 +707,124 @@ class Settings(BaseSettings):
             raise ValueError("health_processing_test_timeout must be between 1 and 60")
         return v
     
+    # API configuration validators
+    @field_validator("api_request_timeout_seconds")
+    @classmethod
+    def validate_api_request_timeout_seconds(cls, v: int) -> int:
+        """Validate that API request timeout is between 30 and 600 seconds."""
+        if not 30 <= v <= 600:
+            raise ValueError("api_request_timeout_seconds must be between 30 and 600")
+        return v
+    
+    @field_validator("api_max_query_length")
+    @classmethod
+    def validate_api_max_query_length(cls, v: int) -> int:
+        """Validate that API max query length is between 10 and 5000 characters."""
+        if not 10 <= v <= 5000:
+            raise ValueError("api_max_query_length must be between 10 and 5000")
+        return v
+    
+    @field_validator("api_max_results_per_request")
+    @classmethod
+    def validate_api_max_results_per_request(cls, v: int) -> int:
+        """Validate that API max results per request is between 1 and 200."""
+        if not 1 <= v <= 200:
+            raise ValueError("api_max_results_per_request must be between 1 and 200")
+        return v
+    
+    @field_validator("api_rate_limit_requests_per_minute")
+    @classmethod
+    def validate_api_rate_limit_requests_per_minute(cls, v: int) -> int:
+        """Validate that API rate limit is between 1 and 1000 requests per minute."""
+        if not 1 <= v <= 1000:
+            raise ValueError("api_rate_limit_requests_per_minute must be between 1 and 1000")
+        return v
+    
+    # Authentication configuration validators
+    @field_validator("api_key_rate_limit_per_minute")
+    @classmethod
+    def validate_api_key_rate_limit_per_minute(cls, v: int) -> int:
+        """Validate that API key rate limit is between 1 and 10000 requests per minute."""
+        if not 1 <= v <= 10000:
+            raise ValueError("api_key_rate_limit_per_minute must be between 1 and 10000")
+        return v
+    
+    # Cache configuration validators
+    @field_validator("cache_ttl_seconds")
+    @classmethod
+    def validate_cache_ttl_seconds(cls, v: int) -> int:
+        """Validate that cache TTL is between 10 and 86400 seconds."""
+        if not 10 <= v <= 86400:
+            raise ValueError("cache_ttl_seconds must be between 10 and 86400")
+        return v
+    
+    @field_validator("cache_max_size")
+    @classmethod
+    def validate_cache_max_size(cls, v: int) -> int:
+        """Validate that cache max size is between 100 and 100000."""
+        if not 100 <= v <= 100000:
+            raise ValueError("cache_max_size must be between 100 and 100000")
+        return v
+    
+    # Logging configuration validators
+    @field_validator("log_format")
+    @classmethod
+    def validate_log_format(cls, v: str) -> str:
+        """Validate that log format is either json or text."""
+        if v not in ["json", "text"]:
+            raise ValueError("log_format must be either 'json' or 'text'")
+        return v
+    
+    @field_validator("log_max_bytes")
+    @classmethod
+    def validate_log_max_bytes(cls, v: int) -> int:
+        """Validate that log max bytes is between 1MB and 1GB."""
+        if not 1048576 <= v <= 1073741824:
+            raise ValueError("log_max_bytes must be between 1MB and 1GB")
+        return v
+    
+    @field_validator("log_backup_count")
+    @classmethod
+    def validate_log_backup_count(cls, v: int) -> int:
+        """Validate that log backup count is between 1 and 50."""
+        if not 1 <= v <= 50:
+            raise ValueError("log_backup_count must be between 1 and 50")
+        return v
+    
+    # Monitoring configuration validators
+    @field_validator("metrics_export_format")
+    @classmethod
+    def validate_metrics_export_format(cls, v: str) -> str:
+        """Validate that metrics export format is either prometheus or json."""
+        if v not in ["prometheus", "json"]:
+            raise ValueError("metrics_export_format must be either 'prometheus' or 'json'")
+        return v
+    
+    @field_validator("health_check_interval_seconds")
+    @classmethod
+    def validate_health_check_interval_seconds(cls, v: int) -> int:
+        """Validate that health check interval is between 10 and 3600 seconds."""
+        if not 10 <= v <= 3600:
+            raise ValueError("health_check_interval_seconds must be between 10 and 3600")
+        return v
+    
+    # Production configuration validators
+    @field_validator("workers")
+    @classmethod
+    def validate_workers(cls, v: int) -> int:
+        """Validate that workers is between 1 and 32."""
+        if not 1 <= v <= 32:
+            raise ValueError("workers must be between 1 and 32")
+        return v
+    
+    @field_validator("max_connections")
+    @classmethod
+    def validate_max_connections(cls, v: int) -> int:
+        """Validate that max connections is between 10 and 10000."""
+        if not 10 <= v <= 10000:
+            raise ValueError("max_connections must be between 10 and 10000")
+        return v
+    
     # Database configuration validators
     @field_validator("database_query_timeout_seconds")
     @classmethod
@@ -647,6 +905,17 @@ class Settings(BaseSettings):
         if not isinstance(v, list):
             raise ValueError("allowed_origins must be a list of strings")
         return v
+    
+    @field_validator("api_keys", mode="before")
+    @classmethod
+    def parse_api_keys(cls, v):
+        """Parse API keys string into structured format."""
+        if isinstance(v, str):
+            return v
+        elif isinstance(v, list):
+            return ",".join(v)
+        else:
+            return ""
     
     # Cross-validation between processing settings and existing configurations
     @model_validator(mode='after')
@@ -729,6 +998,30 @@ except Exception as e:
     
     # Create minimal settings with defaults - extend with all database settings
     class MinimalSettings:
+        # MongoDB Configuration
+        mongodb_uri = "mongodb://localhost:27017"
+        mongodb_db = "traycer_try"
+        mongodb_max_pool_size = 10
+        mongodb_min_pool_size = 1
+        mongodb_max_idle_time_ms = 30000
+        mongodb_server_selection_timeout_ms = 5000
+        mongodb_connect_timeout_ms = 10000
+        
+        # Google Gemini API
+        gemini_api_key = ""
+        gemini_temperature = 0.1
+        gemini_max_tokens = 1000
+        gemini_max_content_length = 4000
+        gemini_max_similarity_content_length = 1000
+        
+        # Agent Configuration
+        agent_timeout_seconds = 30
+        parser_timeout_seconds = 45
+        categorizer_timeout_seconds = 30
+        processor_timeout_seconds = 60
+        agent_max_retries = 3
+        agent_confidence_threshold = 0.7
+        
         # Scraper settings
         scraper_concurrency = 5
         scraper_request_timeout_seconds = 20
@@ -739,16 +1032,24 @@ except Exception as e:
         scraper_max_redirects = 5
         scraper_content_size_limit = 10485760
         
-        # Gemini settings
-        gemini_max_content_length = 4000
-        gemini_max_similarity_content_length = 1000
-        
         # Processing settings
-        processing_max_summary_length = 500
         processing_timeout_seconds = 60
+        processing_max_retries = 2
         processing_concurrency = 3
+        processing_enable_content_cleaning = True
+        processing_enable_ai_analysis = True
+        processing_enable_summarization = True
+        processing_enable_structured_extraction = True
+        processing_enable_duplicate_detection = True
+        processing_similarity_threshold = 0.8
+        processing_min_content_quality_score = 0.4
+        processing_max_summary_length = 500
         processing_batch_size = 10
+        processing_content_timeout = 30
+        processing_max_concurrent_ai_analyses = 3
         processing_memory_threshold_mb = 512
+        processing_max_similarity_content_pairs = 50
+        processing_max_similarity_batch_size = 10
         
         # Database settings
         database_query_timeout_seconds = 30
@@ -756,6 +1057,7 @@ except Exception as e:
         database_batch_size = 100
         database_enable_text_search = True
         database_content_ttl_days = 90
+        database_enable_content_ttl = False
         database_analytics_retention_days = 365
         database_enable_caching = True
         database_cache_ttl_seconds = 3600
@@ -767,6 +1069,56 @@ except Exception as e:
         # Health check settings
         health_agent_test_timeout = 5
         health_processing_test_timeout = 8
+        
+        # API Configuration
+        api_request_timeout_seconds = 300
+        api_max_query_length = 1000
+        api_max_results_per_request = 50
+        api_enable_request_logging = True
+        api_enable_analytics_tracking = True
+        api_rate_limit_requests_per_minute = 60
+        api_enable_detailed_errors = True
+        api_enable_progress_tracking = True
+        api_default_processing_config = True
+        api_enable_database_storage = True
+        
+        # Application Settings
+        environment = "development"
+        log_level = "INFO"
+        debug = True
+        secret_key = "change_me_in_production"
+        allowed_origins = ["http://localhost:3000", "http://localhost:8000"]
+        
+        # Authentication Configuration
+        api_auth_enabled = False
+        api_keys = ""
+        api_key_rate_limit_per_minute = 120
+        api_public_endpoints = ["/health", "/docs", "/redoc", "/openapi.json", "/"]
+        
+        # Cache Configuration
+        cache_enabled = True
+        cache_ttl_seconds = 300
+        cache_max_size = 1000
+        cache_response_enabled = True
+        
+        # Logging Configuration
+        log_format = "json"
+        log_file = None
+        log_max_bytes = 10485760
+        log_backup_count = 5
+        log_request_body = False
+        log_response_body = False
+        
+        # Monitoring Configuration
+        metrics_enabled = True
+        metrics_export_format = "prometheus"
+        health_check_interval_seconds = 60
+        
+        # Production Configuration
+        workers = 4
+        max_connections = 1000
+        trusted_hosts = ["*"]
+        enable_compression = True
     
     settings = MinimalSettings()
 

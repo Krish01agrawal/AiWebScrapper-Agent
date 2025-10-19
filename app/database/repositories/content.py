@@ -26,8 +26,27 @@ class ScrapedContentRepository:
         self.collection: AsyncIOMotorCollection = self.database.content
     
     def _generate_content_hash(self, content: str, url: str) -> str:
-        """Generate hash for content deduplication."""
-        content_to_hash = f"{url}:{content.strip()}"
+        """
+        Generate hash for content deduplication.
+        
+        Deduplication semantics:
+        - Normalizes content by stripping whitespace, collapsing multiple spaces, and lowercasing
+        - Strips URL query parameters to enable cross-URL duplicate detection
+        - Uses SHA256 for consistent hashing
+        - Enables detection of duplicate content across different URLs
+        """
+        import re
+        
+        # Normalize content: strip whitespace, collapse multiple spaces, lowercase
+        normalized_content = re.sub(r'\s+', ' ', content.strip().lower())
+        
+        # Strip URL query parameters for cross-URL duplicate detection
+        from urllib.parse import urlparse, urlunparse
+        parsed_url = urlparse(url)
+        normalized_url = urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path, '', '', ''))
+        
+        # Hash normalized content only (no URL influence)
+        content_to_hash = normalized_content
         return hashlib.sha256(content_to_hash.encode('utf-8')).hexdigest()
     
     async def save_scraped_content(self, content_doc: ScrapedContentDocument) -> ScrapedContentDocument:
@@ -98,7 +117,7 @@ class ScrapedContentRepository:
             existing_docs = await run_with_timeout_and_retries(
                 lambda: self.collection.find(
                     {"content_hash": {"$in": content_hashes}}
-                ).to_list(length=None),
+                ).to_list(length=1000),
                 timeout_s=settings.database_query_timeout_seconds,
                 retries=settings.database_max_retries,
             )
@@ -179,7 +198,8 @@ class ScrapedContentRepository:
     
     async def search_content(self, search_text: str, content_type: Optional[str] = None,
                            domain: Optional[str] = None, limit: int = 20, 
-                           skip: int = 0) -> List[ScrapedContentDocument]:
+                           skip: int = 0, start_date: Optional[datetime] = None,
+                           end_date: Optional[datetime] = None) -> List[ScrapedContentDocument]:
         """Full-text search capabilities."""
         try:
             # Build search filter
@@ -196,6 +216,15 @@ class ScrapedContentRepository:
             # Domain filter
             if domain:
                 filter_dict["url"] = {"$regex": f".*{domain}.*", "$options": "i"}
+            
+            # Date filters
+            if start_date or end_date:
+                date_filter = {}
+                if start_date:
+                    date_filter["$gte"] = start_date
+                if end_date:
+                    date_filter["$lte"] = end_date
+                filter_dict["timestamp"] = date_filter
             
             # Execute search
             cursor = self.collection.find(filter_dict).sort("timestamp", -1).skip(skip).limit(limit)
@@ -309,6 +338,7 @@ class ScrapedContentRepository:
                 {"url": {"$regex": f".*{domain}.*", "$options": "i"}}
             ).sort("timestamp", -1).skip(skip).limit(limit)
             
+            cursor = apply_query_timeout(cursor)
             docs = await cursor.to_list(length=limit)
             return [ScrapedContentDocument(**doc) for doc in docs]
             
@@ -393,6 +423,7 @@ class ScrapedContentRepository:
                 "content_quality_score": {"$gte": min_quality, "$lte": max_quality}
             }).sort("content_quality_score", -1).skip(skip).limit(limit)
             
+            cursor = apply_query_timeout(cursor)
             docs = await cursor.to_list(length=limit)
             return [ScrapedContentDocument(**doc) for doc in docs]
             
@@ -420,7 +451,7 @@ class ScrapedContentRepository:
             )
             
             # Test index status
-            indexes = await self.collection.list_indexes().to_list(length=None)
+            indexes = await self.collection.list_indexes().to_list(length=1000)
             
             # Test aggregation
             stats = await self.get_content_stats()
