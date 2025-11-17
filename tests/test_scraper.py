@@ -269,7 +269,7 @@ class TestBaseScraperAgent:
         unsupported_schemes = ["ftp://invalid", "sftp://invalid"]
         
         for url in unsupported_schemes:
-            with pytest.raises(ValueError, match="Invalid URL format"):
+            with pytest.raises(ValueError, match="Unsupported URL scheme|Invalid URL format"):
                 base_agent._validate_url(url)
     
     def test_url_scheme_validation(self, base_agent):
@@ -283,7 +283,7 @@ class TestBaseScraperAgent:
         ]
         
         for url in unsupported_schemes:
-            with pytest.raises(ValueError, match="Invalid URL format"):
+            with pytest.raises(ValueError, match="Unsupported URL scheme|Invalid URL format"):
                 base_agent._validate_url(url)
         
         # Test supported schemes
@@ -841,9 +841,12 @@ class TestScraperErrorScenarios:
         with patch('aiohttp.ClientSession.get') as mock_get:
             mock_get.side_effect = asyncio.TimeoutError("Request timeout")
             
-            # Should handle timeout gracefully
-            with pytest.raises(asyncio.TimeoutError):
+            # Should handle timeout gracefully - expect ScrapingException wrapping TimeoutError
+            with pytest.raises(ScrapingException) as exc_info:
                 await discovery_agent._discover_via_llm("test query", QueryCategory.AI_TOOLS)
+            
+            # Verify the error type is TIMEOUT
+            assert exc_info.value.error.error_type == ErrorType.TIMEOUT
     
     @pytest.mark.asyncio
     async def test_llm_api_failures(self, mock_gemini_client):

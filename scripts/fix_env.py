@@ -34,25 +34,12 @@ sys.path.insert(0, str(project_root))
 try:
     from scripts.validate_env import EnvValidator
     from scripts.test_connections import ConnectionTester
+    from scripts.utils import Colors, print_status
     import asyncio
 except ImportError as e:
     print(f"❌ Import error: {e}")
     print("Make sure you're in the project root and dependencies are installed")
     sys.exit(1)
-
-
-class Colors:
-    """Terminal color codes for output formatting."""
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    PURPLE = '\033[95m'
-    CYAN = '\033[96m'
-    WHITE = '\033[97m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    END = '\033[0m'
 
 
 class EnvFixer:
@@ -69,19 +56,6 @@ class EnvFixer:
         self.backup_file = None
         self.changes_made = []
         
-    def print_status(self, message: str, status: str = "info"):
-        """Print colored status message."""
-        if status == "success":
-            print(f"{Colors.GREEN}✅ {message}{Colors.END}")
-        elif status == "error":
-            print(f"{Colors.RED}❌ {message}{Colors.END}")
-        elif status == "warning":
-            print(f"{Colors.YELLOW}⚠️  {message}{Colors.END}")
-        elif status == "info":
-            print(f"{Colors.CYAN}ℹ️  {message}{Colors.END}")
-        else:
-            print(f"   {message}")
-    
     def print_header(self):
         """Print script header."""
         print(f"{Colors.BOLD}{Colors.CYAN}🔧 Environment Configuration Fixer{Colors.END}")
@@ -100,10 +74,10 @@ class EnvFixer:
         
         try:
             shutil.copy2(self.env_file, self.backup_file)
-            self.print_status(f"Backup created: {self.backup_file.name}", "success")
+            print_status(f"Backup created: {self.backup_file.name}", "success")
             return True
         except Exception as e:
-            self.print_status(f"Failed to create backup: {e}", "error")
+            print_status(f"Failed to create backup: {e}", "error")
             return False
     
     def restore_from_backup(self, backup_path: str) -> bool:
@@ -111,15 +85,15 @@ class EnvFixer:
         backup_file = Path(backup_path)
         
         if not backup_file.exists():
-            self.print_status(f"Backup file not found: {backup_path}", "error")
+            print_status(f"Backup file not found: {backup_path}", "error")
             return False
         
         try:
             shutil.copy2(backup_file, self.env_file)
-            self.print_status(f"Restored from backup: {backup_path}", "success")
+            print_status(f"Restored from backup: {backup_path}", "success")
             return True
         except Exception as e:
-            self.print_status(f"Failed to restore from backup: {e}", "error")
+            print_status(f"Failed to restore from backup: {e}", "error")
             return False
     
     def parse_env_file(self, file_path: Path) -> Dict[str, str]:
@@ -193,11 +167,11 @@ class EnvFixer:
                         for key, value in vars_list:
                             f.write(f"{key}={value}\n")
             
-            self.print_status(f"Environment file updated: {self.env_file}", "success")
+            print_status(f"Environment file updated: {self.env_file}", "success")
             return True
             
         except Exception as e:
-            self.print_status(f"Failed to write .env file: {e}", "error")
+            print_status(f"Failed to write .env file: {e}", "error")
             return False
     
     def get_user_input(self, prompt: str, default: Optional[str] = None, 
@@ -278,10 +252,10 @@ class EnvFixer:
         if self.env_file.exists():
             return True
         
-        self.print_status(".env file not found", "warning")
+        print_status(".env file not found", "warning")
         
         if not self.env_example_file.exists():
-            self.print_status(".env.example not found", "error")
+            print_status(".env.example not found", "error")
             return False
         
         if self.auto_mode:
@@ -304,10 +278,10 @@ class EnvFixer:
         current_key = env_vars.get('GEMINI_API_KEY', '')
         
         if self.validate_gemini_api_key(current_key):
-            self.print_status("GEMINI_API_KEY is valid", "success")
+            print_status("GEMINI_API_KEY is valid", "success")
             return True
         
-        self.print_status("GEMINI_API_KEY needs configuration", "warning")
+        print_status("GEMINI_API_KEY needs configuration", "warning")
         print(f"{Colors.CYAN}Get your API key from: https://makersuite.google.com/app/apikey{Colors.END}")
         
         api_key = self.get_user_input(
@@ -318,7 +292,7 @@ class EnvFixer:
         if api_key:
             env_vars['GEMINI_API_KEY'] = api_key
             self.changes_made.append("Configured GEMINI_API_KEY")
-            self.print_status("GEMINI_API_KEY configured", "success")
+            print_status("GEMINI_API_KEY configured", "success")
             return True
         
         return False
@@ -328,10 +302,10 @@ class EnvFixer:
         current_uri = env_vars.get('MONGODB_URI', '')
         
         if self.validate_mongodb_uri(current_uri):
-            self.print_status("MONGODB_URI is valid", "success")
+            print_status("MONGODB_URI is valid", "success")
             return True
         
-        self.print_status("MONGODB_URI needs configuration", "warning")
+        print_status("MONGODB_URI needs configuration", "warning")
         print(f"{Colors.CYAN}Common MongoDB URIs:{Colors.END}")
         print("  Local: mongodb://localhost:27017")
         print("  Atlas: mongodb+srv://username:password@cluster.mongodb.net/")
@@ -346,7 +320,7 @@ class EnvFixer:
         if mongodb_uri:
             env_vars['MONGODB_URI'] = mongodb_uri
             self.changes_made.append("Configured MONGODB_URI")
-            self.print_status("MONGODB_URI configured", "success")
+            print_status("MONGODB_URI configured", "success")
             return True
         
         return False
@@ -356,10 +330,10 @@ class EnvFixer:
         current_db = env_vars.get('MONGODB_DB', '')
         
         if self.validate_mongodb_db(current_db):
-            self.print_status("MONGODB_DB is valid", "success")
+            print_status("MONGODB_DB is valid", "success")
             return True
         
-        self.print_status("MONGODB_DB needs configuration", "warning")
+        print_status("MONGODB_DB needs configuration", "warning")
         
         db_name = self.get_user_input(
             "Enter MongoDB database name",
@@ -370,7 +344,7 @@ class EnvFixer:
         if db_name:
             env_vars['MONGODB_DB'] = db_name
             self.changes_made.append("Configured MONGODB_DB")
-            self.print_status("MONGODB_DB configured", "success")
+            print_status("MONGODB_DB configured", "success")
             return True
         
         return False
@@ -380,10 +354,10 @@ class EnvFixer:
         current_port = env_vars.get('PORT', '8000')
         
         if self.validate_port(current_port):
-            self.print_status("PORT is valid", "success")
+            print_status("PORT is valid", "success")
             return True
         
-        self.print_status("PORT needs configuration", "warning")
+        print_status("PORT needs configuration", "warning")
         
         port = self.get_user_input(
             "Enter server port",
@@ -394,7 +368,7 @@ class EnvFixer:
         if port:
             env_vars['PORT'] = port
             self.changes_made.append("Configured PORT")
-            self.print_status("PORT configured", "success")
+            print_status("PORT configured", "success")
             return True
         
         return False
@@ -404,10 +378,10 @@ class EnvFixer:
         current_debug = env_vars.get('DEBUG', 'false')
         
         if self.validate_boolean(current_debug):
-            self.print_status("DEBUG is valid", "success")
+            print_status("DEBUG is valid", "success")
             return True
         
-        self.print_status("DEBUG needs configuration", "warning")
+        print_status("DEBUG needs configuration", "warning")
         
         debug = self.get_user_input(
             "Enable debug mode? (yes/no)",
@@ -419,7 +393,7 @@ class EnvFixer:
             normalized_debug = self.normalize_boolean(debug)
             env_vars['DEBUG'] = normalized_debug
             self.changes_made.append("Configured DEBUG")
-            self.print_status("DEBUG configured", "success")
+            print_status("DEBUG configured", "success")
             return True
         
         return False
@@ -455,35 +429,35 @@ class EnvFixer:
                     issues_fixed += 1
         
         if issues_fixed > 0:
-            self.print_status(f"Fixed {issues_fixed} common issues", "success")
+            print_status(f"Fixed {issues_fixed} common issues", "success")
         
         return True
     
     def run_validation_after_fix(self) -> bool:
         """Run validation after fixes."""
-        self.print_status("Running validation after fixes...", "info")
+        print_status("Running validation after fixes...", "info")
         
         try:
             validator = EnvValidator(self.project_root)
             success = validator.validate_all()
             
             if success:
-                self.print_status("Validation passed after fixes", "success")
+                print_status("Validation passed after fixes", "success")
                 return True
             else:
-                self.print_status("Validation still has issues", "warning")
+                print_status("Validation still has issues", "warning")
                 if validator.errors:
                     for error in validator.errors:
-                        self.print_status(f"  {error}", "error")
+                        print_status(f"  {error}", "error")
                 return False
                 
         except Exception as e:
-            self.print_status(f"Validation failed: {e}", "error")
+            print_status(f"Validation failed: {e}", "error")
             return False
     
     async def test_connections_after_fix(self) -> bool:
         """Test connections after fixes."""
-        self.print_status("Testing connections after fixes...", "info")
+        print_status("Testing connections after fixes...", "info")
         
         try:
             tester = ConnectionTester(timeout=10, verbose=False)
@@ -493,23 +467,23 @@ class EnvFixer:
             total_count = len(results)
             
             if success_count == total_count:
-                self.print_status("All connections successful", "success")
+                print_status("All connections successful", "success")
                 return True
             elif success_count > 0:
-                self.print_status("Partial connectivity", "warning")
+                print_status("Partial connectivity", "warning")
                 return True
             else:
-                self.print_status("All connections failed", "error")
+                print_status("All connections failed", "error")
                 return False
                 
         except Exception as e:
-            self.print_status(f"Connection test failed: {e}", "error")
+            print_status(f"Connection test failed: {e}", "error")
             return False
     
     def show_changes_summary(self):
         """Show summary of changes made."""
         if not self.changes_made:
-            self.print_status("No changes made", "info")
+            print_status("No changes made", "info")
             return
         
         print(f"\n{Colors.BOLD}{Colors.CYAN}📊 Changes Made{Colors.END}")
@@ -524,7 +498,7 @@ class EnvFixer:
     
     def run_guided_setup(self) -> bool:
         """Run guided setup for first-time users."""
-        self.print_status("Starting guided environment setup...", "info")
+        print_status("Starting guided environment setup...", "info")
         print(f"{Colors.CYAN}This will walk you through configuring your environment step by step.{Colors.END}\n")
         
         # Create backup
@@ -547,7 +521,7 @@ class EnvFixer:
         
         for var_name, fix_func in critical_fixes:
             if not fix_func(env_vars):
-                self.print_status(f"Failed to configure {var_name}", "error")
+                print_status(f"Failed to configure {var_name}", "error")
                 return False
         
         # Fix optional variables
@@ -571,21 +545,21 @@ class EnvFixer:
         
         # Run validation
         if not self.run_validation_after_fix():
-            self.print_status("Environment setup completed with warnings", "warning")
+            print_status("Environment setup completed with warnings", "warning")
             return True
         
         # Test connections
         try:
             asyncio.run(self.test_connections_after_fix())
         except Exception as e:
-            self.print_status(f"Connection test failed: {e}", "warning")
+            print_status(f"Connection test failed: {e}", "warning")
         
-        self.print_status("Guided setup completed successfully", "success")
+        print_status("Guided setup completed successfully", "success")
         return True
     
     def run_auto_fix(self) -> bool:
         """Run automatic fixes using defaults."""
-        self.print_status("Running automatic fixes...", "info")
+        print_status("Running automatic fixes...", "info")
         
         # Create backup
         if not self.create_backup():
@@ -624,8 +598,8 @@ class EnvFixer:
         # Show changes summary
         self.show_changes_summary()
         
-        self.print_status("Automatic fixes completed", "success")
-        self.print_status("Please edit .env file with your actual values", "warning")
+        print_status("Automatic fixes completed", "success")
+        print_status("Please edit .env file with your actual values", "warning")
         return True
     
     def run_fix(self) -> bool:

@@ -481,7 +481,7 @@ chmod +x scripts/quick_check.sh
 ```bash
 # Error: .env file not found
 # Solution: Copy from example
-cp env.example .env
+cp .env.example .env
 # Or use fix script
 python scripts/fix_env.py
 ```

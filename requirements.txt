@@ -18,7 +18,7 @@ pydantic-settings>=2.1.0,<3.0.0
 aiohttp[speedups]>=3.9.0,<4.0.0
 beautifulsoup4>=4.12.0,<5.0.0
 aiofiles>=23.2.0,<24.0.0
-robotparser>=1.0.0
+# robotparser is part of Python standard library (urllib.robotparser)
 
 # System monitoring
 psutil>=5.9.0,<6.0.0
@@ -29,11 +29,19 @@ langdetect>=1.0.9,<2.0.0
 # NLP and text processing (optional)
 textstat>=0.7.3,<0.8.0
 
-# Development dependencies (optional)
+# Testing dependencies
 pytest>=7.4.3,<8.0.0
 pytest-asyncio>=0.21.1,<0.22.0
+pytest-cov>=4.1.0,<5.0.0
+pytest-timeout>=2.1.0,<3.0.0
+pytest-xdist>=3.3.0,<4.0.0
+pytest-mock>=3.11.0,<4.0.0
+coverage>=7.3.0,<8.0.0
 aioresponses>=0.7.4,<1.0.0
 mongomock>=4.1.0,<5.0.0
+faker>=19.0.0,<20.0.0
+
+# Development dependencies (optional)
 black>=23.11.0,<24.0.0
 isort>=5.12.0,<6.0.0
 flake8>=6.1.0,<7.0.0

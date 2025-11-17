@@ -118,7 +118,388 @@ python scripts/fix_env.py
 
 For detailed setup instructions, see [Environment Setup Guide](docs/ENVIRONMENT_SETUP.md).
 
-## 🐳 Docker Deployment
+## 🧪 Testing
+
+The AI Web Scraper project includes a comprehensive test suite with proper fixtures, mocks, and async support using pytest-asyncio.
+
+### Running Tests
+
+#### Quick Start
+```bash
+# Run all tests with coverage
+pytest tests/ -v --cov=app --cov-report=html
+
+# Run specific test file
+pytest tests/test_agents.py -v
+
+# Run unit tests only
+pytest tests/ -m unit -v
+
+# Run integration tests
+pytest tests/ -m integration -v
+```
+
+#### Using Make Commands
+```bash
+make test              # Run all tests with coverage
+make test-unit         # Run unit tests only
+make test-fast         # Skip slow tests
+make coverage          # View coverage report
+make clean             # Clean test artifacts
+```
+
+### Test Organization
+
+The test suite is organized into the following modules:
+
+- **`tests/test_agents.py`**: Tests for query processing and categorization (694 lines)
+- **`tests/test_scraper.py`**: Tests for web scraping functionality (891 lines)
+- **`tests/test_processing.py`**: Tests for AI content processing (1165 lines)
+- **`tests/test_database.py`**: Tests for database operations (946 lines)
+- **`tests/test_api.py`**: Tests for API endpoints (717 lines)
+
+### Test Markers
+
+Tests are categorized using pytest markers:
+
+- `@pytest.mark.unit`: Unit tests (no external dependencies)
+- `@pytest.mark.integration`: Integration tests (mocked services)
+- `@pytest.mark.slow`: Tests that take >5 seconds
+- `@pytest.mark.requires_gemini`: Tests requiring actual Gemini API
+- `@pytest.mark.requires_mongodb`: Tests requiring MongoDB connection
+
+### Environment Setup for Tests
+
+Tests use mocked services by default and don't require actual API keys or database connections:
+
+```bash
+# Tests work out of the box with mocks
+pytest tests/ -v
+
+# To run tests requiring actual services (optional)
+export GEMINI_API_KEY="your-api-key"
+export MONGODB_URI="mongodb://localhost:27017/test"
+pytest tests/ -m "requires_gemini or requires_mongodb" -v
+```
+
+### Coverage Requirements
+
+- **Minimum Coverage**: 70%
+- **Target Coverage by Module**:
+  - agents: >80%
+  - scraper: >75%
+  - processing: >75%
+  - database: >80%
+  - api: >85%
+
+View HTML coverage report:
+```bash
+make coverage
+# Opens htmlcov/index.html in your browser
+```
+
+### Continuous Integration
+
+Tests run automatically on GitHub Actions for:
+- Push to main/develop branches
+- Pull requests
+- Multiple Python versions (3.8, 3.9, 3.10, 3.11)
+- Multiple operating systems (Ubuntu, macOS, Windows)
+
+View test results in PR checks and the Actions tab.
+
+### Troubleshooting Tests
+
+#### Common Issues and Solutions
+
+**Import Errors**
+```bash
+# Ensure all dependencies installed
+pip install -r requirements.txt
+
+# Check Python path
+python scripts/preflight_check.py --skip-connections
+```
+
+**Async Errors**
+```bash
+# Verify pytest-asyncio is installed
+pip install pytest-asyncio
+
+# Check async test patterns in conftest.py
+```
+
+**Timeout Errors**
+```bash
+# Increase timeout for slow tests
+pytest tests/ --timeout=60
+
+# Run only fast tests
+pytest tests/ -m "not slow" -v
+```
+
+**Mock Errors**
+```bash
+# Verify mock setup in conftest.py
+# Check that mock responses match actual API structure
+```
+
+**Database Errors**
+```bash
+# Use mocked database (default)
+pytest tests/test_database.py -v
+
+# Or start MongoDB for integration tests
+make db-start
+pytest tests/test_database.py -m requires_mongodb -v
+```
+
+### Writing New Tests
+
+When adding new tests, follow these patterns:
+
+1. **Use existing fixtures** from `conftest.py`
+2. **Add appropriate markers** (`@pytest.mark.unit`, etc.)
+3. **Mock external services** (Gemini API, MongoDB)
+4. **Include docstrings** explaining test purpose
+5. **Follow naming conventions**: `test_<functionality>_<scenario>`
+
+Example:
+```python
+@pytest.mark.unit
+async def test_agent_parsing_success(mock_gemini_client):
+    """Test that agent correctly parses valid Gemini response."""
+    # Test implementation
+```
+
+### Test Results Documentation
+
+- **Detailed Results**: `docs/TEST_RESULTS.md`
+- **Coverage Report**: `htmlcov/index.html`
+- **CI/CD Results**: GitHub Actions tab
+- **Test Execution**: `python scripts/run_tests.py --coverage --output markdown`
+
+### Performance Testing
+
+Run performance and load tests:
+```bash
+make perf-test
+# Runs tests marked as slow or performance
+```
+
+### Security Testing
+
+Run security scans:
+```bash
+make security-test
+# Runs bandit and safety checks
+```
+
+### Full Test Suite
+
+Run the complete test suite:
+```bash
+make test-all
+# Runs unit, integration, performance, and security tests
+```
+
+For more detailed testing information, see the generated test reports in `docs/TEST_RESULTS.md`.
+
+## 🔄 Integration Testing
+
+The AI Web Scraper API includes comprehensive end-to-end integration testing to verify complete workflow functionality from server startup through scrape endpoint execution.
+
+### Quick Start
+
+Run the complete integration test suite:
+
+```bash
+# Run complete workflow test
+make test-workflow
+
+# Or manually
+bash scripts/test_workflow.sh
+```
+
+### Starting the Server
+
+**Development mode (with auto-reload):**
+```bash
+make start-server-dev
+
+# Or using script
+bash scripts/start_server.sh
+```
+
+**Production mode (with workers):**
+```bash
+make start-server-prod
+
+# Or using script
+bash scripts/start_server.sh --production
+```
+
+**Manual start:**
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Health Check Testing
+
+**Test all health endpoints:**
+```bash
+make test-health
+
+# Or manually
+python scripts/test_health.py --all
+```
+
+**Test specific component:**
+```bash
+python scripts/test_health.py --component database
+```
+
+**Using curl:**
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/health/database
+curl http://localhost:8000/health/cache
+```
+
+### Scrape Endpoint Testing
+
+**Test all sample queries:**
+```bash
+make test-scrape
+```
+
+**Test specific category:**
+```bash
+make test-ai-tools
+make test-mutual-funds
+```
+
+**Test specific query:**
+```bash
+python scripts/test_scrape_endpoint.py --query "Best AI tools for coding"
+```
+
+**Using curl:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/scrape" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Best AI agents for coding",
+    "timeout_seconds": 180
+  }'
+```
+
+### Sample Queries
+
+**AI Tools:**
+- "Best AI agents for coding and software development"
+- "AI tools for image generation with free tiers"
+- "Open source AI models for natural language processing"
+
+**Mutual Funds:**
+- "Best mutual funds for beginners with low risk"
+- "Top performing index funds for long-term investment"
+- "Low-cost mutual funds for retirement planning"
+
+### Response Validation
+
+**Validate response schema:**
+```bash
+python scripts/validate_response_schema.py --response-file response.json
+```
+
+**Expected response structure:**
+```json
+{
+  "status": "success",
+  "timestamp": "2024-01-01T12:00:00Z",
+  "query": {
+    "text": "...",
+    "category": "ai_tools",
+    "confidence_score": 0.95
+  },
+  "results": {...},
+  "analytics": {...},
+  "execution_metadata": {...}
+}
+```
+
+### Workflow Verification
+
+The workflow consists of 4 stages:
+
+1. **Query Processing** (1-3 seconds)
+   - Query parsing and categorization
+   - Confidence score calculation
+
+2. **Web Scraping** (10-30 seconds)
+   - Site discovery and content extraction
+   - Robots.txt compliance
+
+3. **AI Processing** (15-45 seconds)
+   - Content cleaning and analysis
+   - Summary generation
+   - Structured data extraction
+
+4. **Database Storage** (1-5 seconds)
+   - Results storage in MongoDB
+   - Collection updates
+
+**Verify all stages in response:**
+```bash
+jq '.execution_metadata.stages_timing' response.json
+```
+
+### Cache Testing
+
+**Test cache functionality:**
+```bash
+make test-cache
+
+# Or manually
+python scripts/test_scrape_endpoint.py --cache
+```
+
+**Check cache headers:**
+```bash
+curl -v -X POST "http://localhost:8000/api/v1/scrape" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "test"}' \
+  | grep -i "X-Cache-Status"
+```
+
+### Performance Benchmarks
+
+- **Fast queries:** <30 seconds
+- **Normal queries:** 30-90 seconds
+- **Complex queries:** 90-180 seconds
+- **Timeout threshold:** 300 seconds
+
+### Troubleshooting
+
+- **Server won't start:** Check environment variables with `python scripts/preflight_check.py`
+- **Health checks fail:** Verify MongoDB and Gemini API connectivity
+- **Scrape requests timeout:** Increase `timeout_seconds` parameter
+- **No content found:** Try different query phrasing
+
+### Documentation
+
+- **Detailed guide:** `docs/INTEGRATION_TESTING.md`
+- **API documentation:** http://localhost:8000/docs
+- **Health checks:** http://localhost:8000/health
+
+### CI/CD Integration
+
+```yaml
+# GitHub Actions example
+- name: Run Integration Tests
+  run: make test-workflow
+```
 
 ### Quick Start with Docker Compose
 

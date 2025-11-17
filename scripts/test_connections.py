@@ -42,24 +42,11 @@ try:
     from motor.motor_asyncio import AsyncIOMotorClient
     import google.generativeai as genai
     from app.core.config import get_settings
+    from scripts.utils import Colors, print_status
 except ImportError as e:
     print(f"❌ Import error: {e}")
     print("Make sure you're in the project root and dependencies are installed")
     sys.exit(1)
-
-
-class Colors:
-    """Terminal color codes for output formatting."""
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    PURPLE = '\033[95m'
-    CYAN = '\033[96m'
-    WHITE = '\033[97m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    END = '\033[0m'
 
 
 class ConnectionTester:
@@ -72,19 +59,6 @@ class ConnectionTester:
         self.mongodb_uri = mongodb_uri
         self.results: Dict[str, Any] = {}
         
-    def print_status(self, message: str, status: str = "info"):
-        """Print colored status message."""
-        if status == "success":
-            print(f"{Colors.GREEN}✅ {message}{Colors.END}")
-        elif status == "error":
-            print(f"{Colors.RED}❌ {message}{Colors.END}")
-        elif status == "warning":
-            print(f"{Colors.YELLOW}⚠️  {message}{Colors.END}")
-        elif status == "info":
-            print(f"{Colors.CYAN}ℹ️  {message}{Colors.END}")
-        else:
-            print(f"   {message}")
-    
     async def test_mongodb_connection(self) -> Dict[str, Any]:
         """Test MongoDB connection."""
         result = {
@@ -95,8 +69,11 @@ class ConnectionTester:
             "details": {}
         }
         
+        # Initialize client to None to ensure it's defined
+        client = None
+        
         try:
-            self.print_status("Testing MongoDB connection...", "info")
+            print_status("Testing MongoDB connection...", "info")
             
             # Load settings
             settings = get_settings()
@@ -137,7 +114,7 @@ class ConnectionTester:
             
             result["status"] = "success"
             result["details"]["uri_tested"] = mongodb_uri
-            self.print_status(f"MongoDB connected successfully ({latency_ms:.2f}ms) to {mongodb_uri}", "success")
+            print_status(f"MongoDB connected successfully ({latency_ms:.2f}ms) to {mongodb_uri}", "success")
             
         except Exception as e:
             result["error"] = str(e)
@@ -147,23 +124,28 @@ class ConnectionTester:
             error_msg = str(e).lower()
             if "timeout" in error_msg:
                 result["details"]["error_type"] = "timeout"
-                self.print_status("MongoDB connection timeout", "error")
+                print_status("MongoDB connection timeout", "error")
             elif "authentication" in error_msg or "auth" in error_msg:
                 result["details"]["error_type"] = "authentication"
-                self.print_status("MongoDB authentication failed", "error")
+                print_status("MongoDB authentication failed", "error")
             elif "network" in error_msg or "unreachable" in error_msg:
                 result["details"]["error_type"] = "network"
-                self.print_status("MongoDB network unreachable", "error")
+                print_status("MongoDB network unreachable", "error")
             elif "uri" in error_msg or "invalid" in error_msg:
                 result["details"]["error_type"] = "invalid_uri"
-                self.print_status("MongoDB URI format invalid", "error")
+                print_status("MongoDB URI format invalid", "error")
             else:
                 result["details"]["error_type"] = "unknown"
-                self.print_status(f"MongoDB connection failed: {e}", "error")
+                print_status(f"MongoDB connection failed: {e}", "error")
             
             if self.verbose:
                 print(f"{Colors.RED}Stack trace:{Colors.END}")
                 traceback.print_exc()
+        
+        finally:
+            # Ensure client is closed on both success and failure paths
+            if client is not None:
+                client.close()
         
         return result
     
@@ -177,8 +159,11 @@ class ConnectionTester:
             "details": {}
         }
         
+        # Define model_name before try block to avoid UnboundLocalError
+        model_name = self.gemini_model or os.getenv('GEMINI_MODEL', 'gemini-1.5-pro')
+        
         try:
-            self.print_status("Testing Gemini API connection...", "info")
+            print_status("Testing Gemini API connection...", "info")
             
             # Load settings
             settings = get_settings()
@@ -191,18 +176,20 @@ class ConnectionTester:
             # Configure Gemini API
             genai.configure(api_key=settings.gemini_api_key)
             
-            # Determine model to use
-            model_name = self.gemini_model or os.getenv('GEMINI_MODEL', 'gemini-1.5-pro')
-            
             # Create model
             model = genai.GenerativeModel(model_name)
             
-            # Test with lightweight request
+            # Test with lightweight request and explicit generation config
             start_time = time.time()
+            generation_config = {
+                'max_output_tokens': 50,
+                'temperature': 0.1
+            }
             response = await asyncio.wait_for(
                 asyncio.to_thread(
                     model.generate_content,
-                    "Test connection. Respond with 'OK'."
+                    "Test connection. Respond with 'OK'.",
+                    generation_config=generation_config
                 ),
                 timeout=self.timeout
             )
@@ -216,19 +203,19 @@ class ConnectionTester:
                 result["details"]["response_text"] = response.text.strip()
                 result["details"]["model_used"] = model_name
                 result["status"] = "success"
-                self.print_status(f"Gemini API connected successfully ({latency_ms:.2f}ms) using {model_name}", "success")
+                print_status(f"Gemini API connected successfully ({latency_ms:.2f}ms) using {model_name}", "success")
             else:
                 result["error"] = f"Empty response from Gemini API (model: {model_name})"
                 result["status"] = "failed"
                 result["details"]["model_used"] = model_name
-                self.print_status(f"Gemini API returned empty response (model: {model_name})", "error")
+                print_status(f"Gemini API returned empty response (model: {model_name})", "error")
             
         except asyncio.TimeoutError:
             result["error"] = f"Request timeout after {self.timeout} seconds (model: {model_name})"
             result["status"] = "failed"
             result["details"]["error_type"] = "timeout"
             result["details"]["model_used"] = model_name
-            self.print_status(f"Gemini API request timeout (model: {model_name})", "error")
+            print_status(f"Gemini API request timeout (model: {model_name})", "error")
             
         except Exception as e:
             result["error"] = str(e)
@@ -239,25 +226,25 @@ class ConnectionTester:
             error_msg = str(e).lower()
             if "api key" in error_msg or "invalid" in error_msg or "unauthorized" in error_msg:
                 result["details"]["error_type"] = "invalid_api_key"
-                self.print_status("Gemini API key invalid", "error")
+                print_status("Gemini API key invalid", "error")
             elif "quota" in error_msg or "limit" in error_msg or "rate" in error_msg:
                 result["details"]["error_type"] = "quota_exceeded"
-                self.print_status("Gemini API quota exceeded", "error")
+                print_status("Gemini API quota exceeded", "error")
             elif "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
                 result["details"]["error_type"] = "network"
-                self.print_status("Gemini API network error", "error")
+                print_status("Gemini API network error", "error")
             elif "model" in error_msg or "not found" in error_msg or "does not exist" in error_msg:
                 result["details"]["error_type"] = "model_not_found"
-                self.print_status(f"Gemini model '{model_name}' not found - try 'gemini-1.5-flash' as fallback", "error")
+                print_status(f"Gemini model '{model_name}' not found - try 'gemini-1.5-flash' as fallback", "error")
             elif "permission" in error_msg or "forbidden" in error_msg:
                 result["details"]["error_type"] = "permission_denied"
-                self.print_status("Gemini API permission denied", "error")
+                print_status("Gemini API permission denied", "error")
             elif "bad request" in error_msg or "400" in error_msg:
                 result["details"]["error_type"] = "bad_request"
-                self.print_status("Gemini API bad request", "error")
+                print_status("Gemini API bad request", "error")
             else:
                 result["details"]["error_type"] = "unknown"
-                self.print_status(f"Gemini API connection failed: {e}", "error")
+                print_status(f"Gemini API connection failed: {e}", "error")
             
             if self.verbose:
                 print(f"{Colors.RED}Stack trace:{Colors.END}")

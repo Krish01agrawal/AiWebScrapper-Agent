@@ -534,9 +534,9 @@ class TestErrorScenarios:
         
         parser.execute = slow_execute
         
-        # Test with a very short timeout
+        # Test with a safer timeout threshold
         with pytest.raises(asyncio.TimeoutError):
-            await parser.execute_with_timeout("test query", timeout_seconds=0.01)
+            await parser.execute_with_timeout("test query", timeout_seconds=0.05)
     
     @pytest.mark.asyncio
     async def test_categorizer_timeout_handling(self, mock_gemini_client):
@@ -550,9 +550,9 @@ class TestErrorScenarios:
         
         categorizer.execute = slow_execute
         
-        # Test with a very short timeout
+        # Test with a safer timeout threshold
         with pytest.raises(asyncio.TimeoutError):
-            await categorizer.execute_with_timeout({"raw_query": "test"}, timeout_seconds=0.01)
+            await categorizer.execute_with_timeout({"raw_query": "test"}, timeout_seconds=0.05)
     
     @pytest.mark.asyncio
     async def test_processor_timeout_handling(self, mock_gemini_client):
@@ -573,9 +573,9 @@ class TestErrorScenarios:
         
         processor.execute = slow_execute
         
-        # Test with a very short timeout
+        # Test with a safer timeout threshold
         with pytest.raises(asyncio.TimeoutError):
-            await processor.execute_with_timeout("test query", timeout_seconds=0.01)
+            await processor.execute_with_timeout("test query", timeout_seconds=0.05)
     
     @pytest.mark.asyncio
     async def test_gemini_api_failure_handling(self, mock_gemini_client):

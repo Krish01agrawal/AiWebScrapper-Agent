@@ -21,19 +21,8 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 import argparse
 
-
-class Colors:
-    """Terminal color codes for output formatting."""
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    PURPLE = '\033[95m'
-    CYAN = '\033[96m'
-    WHITE = '\033[97m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    END = '\033[0m'
+# Import shared utilities
+from scripts.utils import Colors, print_status
 
 
 class EnvValidator:
@@ -47,29 +36,16 @@ class EnvValidator:
         self.warnings: List[str] = []
         self.passed: List[str] = []
         
-    def print_status(self, message: str, status: str = "info"):
-        """Print colored status message."""
-        if status == "success":
-            print(f"{Colors.GREEN}✅ {message}{Colors.END}")
-        elif status == "error":
-            print(f"{Colors.RED}❌ {message}{Colors.END}")
-        elif status == "warning":
-            print(f"{Colors.YELLOW}⚠️  {message}{Colors.END}")
-        elif status == "info":
-            print(f"{Colors.CYAN}ℹ️  {message}{Colors.END}")
-        else:
-            print(f"   {message}")
-    
     def check_file_existence(self) -> bool:
         """Check if .env file exists."""
         if not self.env_file.exists():
             self.errors.append(f".env file not found at {self.env_file}")
-            self.print_status(f".env file not found at {self.env_file}", "error")
-            self.print_status("Copy .env.example to .env and configure your values", "info")
+            print_status(f".env file not found at {self.env_file}", "error")
+            print_status("Copy .env.example to .env and configure your values", "info")
             return False
         
         self.passed.append(".env file exists")
-        self.print_status(".env file exists", "success")
+        print_status(".env file exists", "success")
         return True
     
     def parse_env_file(self, file_path: Path) -> Dict[str, str]:
@@ -375,9 +351,11 @@ class EnvValidator:
     def compare_with_example(self, env_vars: Dict[str, str]) -> None:
         """Compare .env with .env.example to find missing or extra variables."""
         example_vars = self.parse_env_file(self.env_example_file)
+        required_vars = self.extract_required_vars_from_example()
         
-        # Find missing variables
+        # Find missing variables, excluding those identified as required
         missing_vars = set(example_vars.keys()) - set(env_vars.keys())
+        missing_vars = missing_vars - set(required_vars.keys())  # Exclude required vars
         for var in missing_vars:
             self.warnings.append(f"Missing optional variable: {var}")
         
@@ -387,9 +365,9 @@ class EnvValidator:
             self.warnings.append(f"Extra variable not in .env.example: {var}")
         
         if missing_vars:
-            self.print_status(f"Found {len(missing_vars)} missing optional variables", "warning")
+            print_status(f"Found {len(missing_vars)} missing optional variables", "warning")
         if extra_vars:
-            self.print_status(f"Found {len(extra_vars)} extra variables", "warning")
+            print_status(f"Found {len(extra_vars)} extra variables", "warning")
     
     def validate_all(self) -> bool:
         """Run all validation checks."""
@@ -408,18 +386,19 @@ class EnvValidator:
             self.errors.append("No environment variables found in .env file")
             return False
         
-        self.print_status(f"Found {len(env_vars)} environment variables", "success")
+        print_status(f"Found {len(env_vars)} environment variables", "success")
         
         # Check for missing required variables
         print(f"\n{Colors.BOLD}Required Variables Check:{Colors.END}")
         for var_name, default_value in required_vars.items():
             if var_name not in env_vars:
                 self.errors.append(f"Missing required variable: {var_name}")
-                self.print_status(f"Missing required variable: {var_name}", "error")
+                print_status(f"Missing required variable: {var_name}", "error")
                 if default_value:
-                    self.print_status(f"  Default value: {default_value}", "info")
+                    print_status(f"  Default value: {default_value}", "info")
             else:
-                self.print_status(f"✓ {var_name} is present", "success")
+                self.passed.append(f"{var_name} present")
+                print_status(f"✓ {var_name} is present", "success")
         
         # Validate critical variables
         print(f"\n{Colors.BOLD}Critical Variables:{Colors.END}")
@@ -443,6 +422,7 @@ class EnvValidator:
         print(f"\n{Colors.BOLD}{Colors.CYAN}📊 Validation Summary{Colors.END}")
         print(f"{Colors.CYAN}{'='*50}{Colors.END}")
         
+        # Calculate total checks more accurately
         total_checks = len(self.passed) + len(self.errors) + len(self.warnings)
         
         if self.passed:

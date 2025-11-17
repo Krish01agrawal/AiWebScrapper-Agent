@@ -1,0 +1,174 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        env:
+          MONGO_INITDB_ROOT_USERNAME: admin
+          MONGO_INITDB_ROOT_PASSWORD: testpassword
+          MONGO_INITDB_DATABASE: traycer_try_test
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand(\"ping\").ok' --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          MONGODB_URI=mongodb://admin:testpassword@localhost:27017/traycer_try_test?authSource=admin
+          MONGODB_DB=traycer_try_test
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          ENVIRONMENT=test
+          LOG_LEVEL=INFO
+          DEBUG=false
+          CACHE_ENABLED=true
+          API_AUTH_ENABLED=false
+          EOF
+      
+      - name: Validate environment
+        run: |
+          python scripts/preflight_check.py --skip-connections
+      
+      - name: Test MongoDB connection
+        run: |
+          python scripts/test_connections.py --mongodb-only
+      
+      - name: Test Gemini API connection
+        run: |
+          python scripts/test_connections.py --gemini-only
+      
+      - name: Start server in background
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          echo $! > server.pid
+          sleep 10
+      
+      - name: Wait for server to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:8000/health > /dev/null; then
+              echo "Server is ready"
+              break
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+      
+      - name: Test health endpoints
+        run: |
+          python scripts/test_health.py --all --json > health_results.json
+      
+      - name: Test scrape endpoint
+        run: |
+          python scripts/test_scrape_endpoint.py --all --json --save-responses > scrape_results.json
+      
+      - name: Validate responses
+        run: |
+          # Use test_workflow.sh to generate response files if they don't exist
+          if [ ! -f ai_tools_response.json ] || [ ! -f mutual_funds_response.json ]; then
+            echo "Response files not found, running test_workflow.sh to generate them..."
+            bash scripts/test_workflow.sh --save-responses --skip-validation || true
+          fi
+          
+          VALIDATION_FAILED=false
+          if [ -f ai_tools_response.json ]; then
+            if ! python scripts/validate_response_schema.py --response-file ai_tools_response.json; then
+              VALIDATION_FAILED=true
+            fi
+          fi
+          if [ -f mutual_funds_response.json ]; then
+            if ! python scripts/validate_response_schema.py --response-file mutual_funds_response.json; then
+              VALIDATION_FAILED=true
+            fi
+          fi
+          
+          if [ "$VALIDATION_FAILED" = "true" ]; then
+            echo "Schema validation failed"
+            exit 1
+          fi
+      
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) || true
+          fi
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: integration-test-results
+          path: |
+            health_results.json
+            scrape_results.json
+            *_response.json
+      
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            let comment = '## Integration Test Results\n\n';
+            
+            try {
+              const healthResults = JSON.parse(fs.readFileSync('health_results.json', 'utf8'));
+              comment += `### Health Checks\n`;
+              comment += `- Status: ${healthResults.overall_status}\n`;
+              comment += `- Passed: ${healthResults.passed}/${healthResults.total}\n`;
+              comment += `- Success Rate: ${healthResults.success_rate?.toFixed(1) || 0}%\n\n`;
+            } catch (e) {
+              comment += '### Health Checks\n- Failed to parse results\n\n';
+            }
+            
+            try {
+              const scrapeResults = JSON.parse(fs.readFileSync('scrape_results.json', 'utf8'));
+              comment += `### Scrape Endpoint Tests\n`;
+              if (scrapeResults.summary) {
+                comment += `- Status: ${scrapeResults.summary.passed === scrapeResults.summary.total_tests ? 'PASSED' : 'FAILED'}\n`;
+                comment += `- Passed: ${scrapeResults.summary.passed}/${scrapeResults.summary.total_tests}\n`;
+                comment += `- Success Rate: ${scrapeResults.summary.success_rate?.toFixed(1) || 0}%\n`;
+              } else {
+                comment += `- Failed to parse summary from results\n`;
+              }
+            } catch (e) {
+              comment += '### Scrape Endpoint Tests\n- Failed to parse results\n';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
