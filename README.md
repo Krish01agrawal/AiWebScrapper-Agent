@@ -150,6 +150,14 @@ make clean             # Clean test artifacts
 
 ### Test Organization
 
+### Test Coverage
+
+The test suite includes:
+- **Unit Tests**: Component-level testing with mocks
+- **Integration Tests**: End-to-end workflow validation
+- **Real-World Scenario Tests**: Content quality and relevance validation
+- **Performance Tests**: Timing and benchmarking
+
 The test suite is organized into the following modules:
 
 - **`tests/test_agents.py`**: Tests for query processing and categorization (694 lines)
@@ -490,8 +498,37 @@ curl -v -X POST "http://localhost:8000/api/v1/scrape" \
 ### Documentation
 
 - **Detailed guide:** `docs/INTEGRATION_TESTING.md`
+- **Real-world testing:** `docs/REAL_WORLD_TESTING.md`
 - **API documentation:** http://localhost:8000/docs
 - **Health checks:** http://localhost:8000/health
+
+### Real-World Scenario Testing
+
+The AI Web Scraper includes comprehensive real-world scenario testing that validates content quality, relevance, and AI analysis results with actual user queries.
+
+**Quick Start:**
+```bash
+# Test specific user queries
+make test-ai-agents
+make test-mutual-funds-query
+
+# Run comprehensive real-world tests
+make test-real-world
+
+# Performance benchmarking
+make test-performance
+
+# Edge case testing
+make test-edge-cases
+```
+
+**Detailed Documentation:**
+See [Real-World Testing Guide](docs/REAL_WORLD_TESTING.md) for comprehensive documentation on:
+- Content quality validation
+- Relevance scoring methodology
+- Performance benchmarking
+- Edge case testing
+- Test report interpretation
 
 ### CI/CD Integration
 
@@ -499,6 +536,10 @@ curl -v -X POST "http://localhost:8000/api/v1/scrape" \
 # GitHub Actions example
 - name: Run Integration Tests
   run: make test-workflow
+
+# Real-world scenario tests
+- name: Run Real-World Tests
+  run: make test-real-world
 ```
 
 ### Quick Start with Docker Compose

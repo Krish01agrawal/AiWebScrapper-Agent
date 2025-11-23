@@ -46,6 +46,16 @@ help:
 	@echo "  test-mutual-funds Test all mutual funds sample queries"
 	@echo "  integration-report Generate comprehensive test report"
 	@echo ""
+	@echo "Real-World Scenario Testing Commands:"
+	@echo "  test-real-world   Run real-world scenario tests"
+	@echo "  test-real-world-json Run real-world tests (JSON output)"
+	@echo "  test-performance Run performance benchmarks"
+	@echo "  test-performance-json Run performance benchmarks (JSON output)"
+	@echo "  test-edge-cases   Run edge case tests"
+	@echo "  test-ai-agents    Test AI agents query"
+	@echo "  test-mutual-funds-query Test mutual funds query"
+	@echo "  test-comprehensive Run comprehensive test suite (all tests)"
+	@echo ""
 
 # Testing commands
 test:
@@ -296,3 +306,43 @@ integration-report:
 	@echo "📊 Generating comprehensive integration test report..."
 	bash scripts/test_workflow.sh --save-responses && python scripts/test_scrape_endpoint.py --all --json > integration_report.json
 	@echo "✅ Integration test report generated: integration_report.json"
+
+# Real-world scenario testing
+test-real-world:
+	@echo "Running real-world scenario tests..."
+	python scripts/test_real_world_scenarios.py --all --verbose
+
+test-real-world-json:
+	@echo "Running real-world scenario tests (JSON output)..."
+	python scripts/test_real_world_scenarios.py --all --json
+
+# Performance benchmarking
+test-performance:
+	@echo "Running performance benchmarks..."
+	python scripts/test_real_world_scenarios.py --performance --verbose
+
+test-performance-json:
+	@echo "Running performance benchmarks (JSON output)..."
+	python scripts/test_real_world_scenarios.py --performance --json
+
+# Edge case testing
+test-edge-cases:
+	@echo "Running edge case tests..."
+	python scripts/test_real_world_scenarios.py --edge-cases --verbose
+
+# Comprehensive testing (all tests)
+test-comprehensive:
+	@echo "Running comprehensive test suite..."
+	$(MAKE) test-unit
+	$(MAKE) test-integration
+	$(MAKE) test-real-world
+	$(MAKE) test-performance
+
+# Quick real-world test (specific queries)
+test-ai-agents:
+	@echo "Testing AI agents query..."
+	python scripts/test_real_world_scenarios.py --query "best AI agents for coding" --verbose
+
+test-mutual-funds-query:
+	@echo "Testing mutual funds query..."
+	python scripts/test_real_world_scenarios.py --query "best mutual funds for beginners" --verbose

@@ -183,3 +183,16 @@ logs/
 # Temporary files
 tmp/
 temp/
+
+# Test results
+test_results/*.json
+test_results/*.csv
+test_results/*.html
+!test_results/.gitkeep
+
+# Performance reports
+performance_reports/
+
+# Temporary test files
+test_*.tmp
+response_*.json

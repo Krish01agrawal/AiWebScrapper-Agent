@@ -1,0 +1,129 @@
+name: Real-World Scenario Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  real-world-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    services:
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run preflight checks
+        run: |
+          python scripts/preflight_check.py --ci
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MONGODB_URI: mongodb://localhost:27017
+      
+      - name: Start FastAPI server
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MONGODB_URI: mongodb://localhost:27017
+      
+      - name: Wait for server to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:8000/health > /dev/null; then
+              echo "Server is ready"
+              break
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+      
+      - name: Run real-world scenario tests
+        run: |
+          python scripts/test_real_world_scenarios.py --all --json --save-report
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      
+      - name: Run performance benchmarks
+        run: |
+          python scripts/test_real_world_scenarios.py --performance --json --save-report
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: real-world-test-reports
+          path: test_results/
+      
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            try {
+              const testResultsDir = 'test_results';
+              const files = fs.readdirSync(testResultsDir);
+              const latestFile = files
+                .filter(f => f.startsWith('real_world_scenarios_') && f.endsWith('.json'))
+                .sort()
+                .reverse()[0];
+              
+              if (latestFile) {
+                const results = JSON.parse(fs.readFileSync(path.join(testResultsDir, latestFile), 'utf8'));
+                const summary = results.summary;
+                const comment = `## Real-World Scenario Test Results\n\n` +
+                  `- Total Tests: ${summary.total_tests}\n` +
+                  `- Passed: ${summary.passed}\n` +
+                  `- Failed: ${summary.failed}\n` +
+                  `- Success Rate: ${summary.success_rate.toFixed(1)}%\n\n` +
+                  `See artifacts for detailed reports.`;
+                
+                github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: comment
+                });
+              } else {
+                github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: '## Real-World Scenario Test Results\n\nTest reports not found. Check workflow logs for details.'
+                });
+              }
+            } catch (error) {
+              console.error('Error creating comment:', error);
+            }
+

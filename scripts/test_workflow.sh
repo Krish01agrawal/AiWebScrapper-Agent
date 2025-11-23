@@ -479,6 +479,45 @@ PHASE_DURATION=$(($(date +%s) - PHASE_START))
 log_info "Phase 7 completed in ${PHASE_DURATION}s"
 echo ""
 
+# Phase 8: Real-World Scenario Testing
+log_info "Phase 8: Real-World Scenario Testing"
+PHASE_START=$(date +%s)
+
+log_info "Running real-world scenario tests..."
+if python scripts/test_real_world_scenarios.py --all --save-report --verbose > /dev/null 2>&1; then
+    log_success "Real-world scenario tests passed"
+    PHASE_RESULTS["Phase 8"]="PASS"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+else
+    log_error "Real-world scenario tests failed"
+    PHASE_RESULTS["Phase 8"]="FAIL"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+fi
+
+TOTAL_TESTS=$((TOTAL_TESTS + 1))
+PHASE_DURATION=$(($(date +%s) - PHASE_START))
+log_info "Phase 8 completed in ${PHASE_DURATION}s"
+echo ""
+
+# Phase 9: Performance Benchmarking
+log_info "Phase 9: Performance Benchmarking"
+PHASE_START=$(date +%s)
+
+log_info "Running performance benchmarks..."
+if python scripts/test_real_world_scenarios.py --performance --save-report --verbose > /dev/null 2>&1; then
+    log_success "Performance benchmarks passed"
+    PHASE_RESULTS["Phase 9"]="PASS"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+else
+    log_warning "Performance benchmarks had warnings"
+    PHASE_RESULTS["Phase 9"]="WARN"
+fi
+
+TOTAL_TESTS=$((TOTAL_TESTS + 1))
+PHASE_DURATION=$(($(date +%s) - PHASE_START))
+log_info "Phase 9 completed in ${PHASE_DURATION}s"
+echo ""
+
 # Test Summary
 echo ""
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
@@ -489,7 +528,7 @@ echo ""
 printf "%-30s %-10s\n" "Phase" "Status"
 echo "------------------------------------------------------------"
 
-for phase in "Phase 1" "Phase 2" "Phase 3" "Phase 4" "Phase 5" "Phase 6" "Phase 7"; do
+for phase in "Phase 1" "Phase 2" "Phase 3" "Phase 4" "Phase 5" "Phase 6" "Phase 7" "Phase 8" "Phase 9"; do
     status="${PHASE_RESULTS[$phase]:-UNKNOWN}"
     if [ "$status" = "PASS" ]; then
         printf "%-30s ${GREEN}%-10s${NC}\n" "$phase" "$status"
