@@ -1,0 +1,27 @@
+# Exclude test result files from version control. Baseline files (baseline_*.json) are included for CI/CD comparison.
+
+# Exclude all JSON result files by default
+*.json
+
+# Allow baseline files to be committed
+!baseline_*.json
+
+# Exclude HTML reports
+*.html
+
+# Exclude Markdown reports
+*.md
+
+# Allow README to be committed
+!README.md
+
+# Exclude generated graphs/charts
+*.png
+*.svg
+
+# Exclude log files
+*.log
+
+# Exclude temporary files
+*.tmp
+

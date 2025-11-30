@@ -196,3 +196,8 @@ performance_reports/
 # Temporary test files
 test_*.tmp
 response_*.json
+
+# Demo materials
+demo_session_*.log
+demo_responses_*.json
+*_demo_response.json

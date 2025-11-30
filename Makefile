@@ -56,6 +56,19 @@ help:
 	@echo "  test-mutual-funds-query Test mutual funds query"
 	@echo "  test-comprehensive Run comprehensive test suite (all tests)"
 	@echo ""
+	@echo "Load Testing & Performance Commands:"
+	@echo "  test-load              Basic load test with default concurrency"
+	@echo "  test-load-ramp         Gradual ramp-up test"
+	@echo "  test-load-burst        Burst traffic test"
+	@echo "  test-load-sustained    Sustained load test"
+	@echo "  test-cache-performance Cache behavior validation"
+	@echo "  test-rate-limits       Rate limiting validation"
+	@echo "  test-connection-pool   MongoDB connection pool stress test"
+	@echo "  test-load-all          Run all load test scenarios"
+	@echo "  analyze-load-results   Analyze load test results"
+	@echo "  test-load-baseline     Establish performance baseline"
+	@echo "  test-load-compare      Compare against baseline"
+	@echo ""
 
 # Testing commands
 test:
@@ -346,3 +359,120 @@ test-ai-agents:
 test-mutual-funds-query:
 	@echo "Testing mutual funds query..."
 	python scripts/test_real_world_scenarios.py --query "best mutual funds for beginners" --verbose
+
+# Load testing and performance validation
+test-load:
+	@echo "Running basic load test..."
+	python scripts/test_load_performance.py --concurrency 20 --duration 60 --verbose
+
+test-load-ramp:
+	@echo "Running gradual ramp-up test..."
+	python scripts/test_load_performance.py --ramp-up --concurrency 50 --verbose
+
+test-load-burst:
+	@echo "Running burst traffic test..."
+	python scripts/test_load_performance.py --burst --concurrency 50 --verbose
+
+test-load-sustained:
+	@echo "Running sustained load test..."
+	python scripts/test_load_performance.py --sustained --concurrency 20 --duration 120 --verbose
+
+test-cache-performance:
+	@echo "Testing cache behavior..."
+	python scripts/test_load_performance.py --cache-test --verbose
+
+test-rate-limits:
+	@echo "Testing rate limiting..."
+	python scripts/test_load_performance.py --rate-limit-test --verbose
+
+test-connection-pool:
+	@echo "Testing connection pool under load..."
+	python scripts/test_load_performance.py --sustained --concurrency 20 --verbose
+
+test-load-all:
+	@echo "Running all load test scenarios..."
+	python scripts/test_load_performance.py --all --save-results --verbose
+
+analyze-load-results:
+	@echo "Analyzing load test results..."
+	@LATEST=$$(ls -t test_results/load_test_*.json 2>/dev/null | head -1); \
+	if [ -n "$$LATEST" ]; then \
+		python scripts/analyze_load_test_results.py --results-file $$LATEST --format markdown --verbose; \
+	else \
+		echo "⚠️  No load test results found. Run 'make test-load-all' first."; \
+	fi
+
+test-load-baseline:
+	@echo "Establishing performance baseline..."
+	python scripts/test_load_performance.py --all --save-results --verbose
+	@LATEST=$$(ls -t test_results/load_test_*.json 2>/dev/null | head -1); \
+	if [ -n "$$LATEST" ]; then \
+		cp $$LATEST test_results/baseline_load_test.json; \
+		echo "✅ Baseline saved to test_results/baseline_load_test.json"; \
+	else \
+		echo "⚠️  Failed to create baseline. Check test results."; \
+	fi
+
+test-load-compare:
+	@echo "Comparing against baseline..."
+	@if [ -f test_results/baseline_load_test.json ]; then \
+		LATEST=$$(ls -t test_results/load_test_*.json 2>/dev/null | head -1); \
+		if [ -n "$$LATEST" ]; then \
+			python scripts/analyze_load_test_results.py \
+				--results-file $$LATEST \
+				--baseline-file test_results/baseline_load_test.json \
+				--format markdown --verbose; \
+		else \
+			echo "⚠️  No current test results found. Run 'make test-load-all' first."; \
+		fi \
+	else \
+		echo "⚠️  No baseline found. Run 'make test-load-baseline' first."; \
+	fi
+
+# Error Recovery Testing
+.PHONY: test-errors
+test-errors:
+	@echo "Running error scenario tests..."
+	pytest tests/test_error_scenarios.py -v --tb=short
+
+.PHONY: test-middleware-errors
+test-middleware-errors:
+	@echo "Running middleware error tests..."
+	pytest tests/test_middleware_errors.py -v --tb=short
+
+.PHONY: test-error-recovery
+test-error-recovery:
+	@echo "Running end-to-end error recovery tests..."
+	python scripts/test_error_recovery.py --all
+
+.PHONY: test-all-errors
+test-all-errors: test-errors test-middleware-errors test-error-recovery
+	@echo "All error tests completed"
+
+.PHONY: simulate-mongodb-failure
+simulate-mongodb-failure:
+	@echo "Simulating MongoDB failure..."
+	./scripts/simulate_failures.sh mongodb down
+	@echo "MongoDB stopped. Run 'make restore-services' to restore."
+
+.PHONY: simulate-gemini-failure
+simulate-gemini-failure:
+	@echo "Simulating Gemini API failure..."
+	./scripts/simulate_failures.sh gemini invalid-key
+	@echo "Gemini API key invalidated. Run 'make restore-services' to restore."
+
+.PHONY: restore-services
+restore-services:
+	@echo "Restoring all services..."
+	./scripts/simulate_failures.sh restore-all
+	@echo "Services restored"
+
+.PHONY: test-with-failures
+test-with-failures:
+	@echo "Running tests with simulated failures..."
+	$(MAKE) simulate-mongodb-failure
+	python scripts/test_error_recovery.py --test mongodb_failure
+	$(MAKE) restore-services
+	$(MAKE) simulate-gemini-failure
+	python scripts/test_error_recovery.py --test gemini_failure
+	$(MAKE) restore-services

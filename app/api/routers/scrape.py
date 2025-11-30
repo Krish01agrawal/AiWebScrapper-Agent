@@ -398,6 +398,8 @@ async def scrape_content(
                 status_code=500,
                 metadata=execution_metadata
             )
+            # Add retry_possible flag to error response
+            error_response["error"]["retry_possible"] = scrape_error.retry_possible
             error_response["request_id"] = request_id
             
             return JSONResponse(

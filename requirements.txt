@@ -13,6 +13,7 @@ google-generativeai>=0.3.2
 python-dotenv>=1.0.0,<2.0.0
 pydantic[email]>=2.5.0,<3.0.0
 pydantic-settings>=2.1.0,<3.0.0
+colorama>=0.4.6
 
 # Web scraping dependencies
 aiohttp[speedups]>=3.9.0,<4.0.0

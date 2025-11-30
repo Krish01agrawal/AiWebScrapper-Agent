@@ -1,0 +1,200 @@
+name: Error Recovery Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  error-scenario-tests:
+    name: Error Scenario Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov
+      
+      - name: Set up environment
+        run: |
+          cp .env.example .env
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+          echo "MONGODB_URI=mongodb://localhost:27017" >> .env
+      
+      - name: Run error scenario tests
+        run: |
+          pytest tests/test_error_scenarios.py -v --tb=short --cov=app --cov-report=xml
+      
+      - name: Run middleware error tests
+        run: |
+          pytest tests/test_middleware_errors.py -v --tb=short
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          flags: error-tests
+  
+  integration-error-tests:
+    name: Integration Error Recovery Tests
+    runs-on: ubuntu-latest
+    needs: error-scenario-tests
+    
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Set up environment
+        run: |
+          cp .env.example .env
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+          echo "MONGODB_URI=mongodb://localhost:27017" >> .env
+      
+      - name: Start FastAPI server
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+      
+      - name: Wait for server
+        run: |
+          timeout 30 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
+      
+      - name: Run error recovery tests
+        run: |
+          python scripts/test_error_recovery.py --all --output error_recovery_results.json
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: error-recovery-results
+          path: error_recovery_results.json
+      
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            try {
+              const results = JSON.parse(fs.readFileSync('error_recovery_results.json', 'utf8'));
+              const summary = `## Error Recovery Test Results\n\n` +
+                `- Total Tests: ${results.total_tests}\n` +
+                `- Passed: ${results.passed}\n` +
+                `- Failed: ${results.failed}\n` +
+                `- Success Rate: ${results.success_rate}%\n\n` +
+                `See artifacts for detailed results.`;
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: summary
+              });
+            } catch (error) {
+              console.log('Could not parse test results:', error);
+            }
+  
+  failure-simulation-tests:
+    name: Failure Simulation Tests
+    runs-on: ubuntu-latest
+    needs: error-scenario-tests
+    
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Set up environment
+        run: |
+          cp .env.example .env
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+          echo "MONGODB_URI=mongodb://localhost:27017" >> .env
+      
+      - name: Make scripts executable
+        run: |
+          chmod +x scripts/simulate_failures.sh
+          chmod +x scripts/start_server.sh
+      
+      - name: Start FastAPI server
+        run: |
+          ./scripts/start_server.sh &
+          sleep 15
+      
+      - name: Wait for server
+        run: |
+          timeout 30 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
+      
+      - name: Test MongoDB failure scenario
+        run: |
+          docker stop $(docker ps -q --filter ancestor=mongo:7.0) || true
+          python scripts/test_error_recovery.py --test mongodb_failure || true
+          docker start $(docker ps -aq --filter ancestor=mongo:7.0) || true
+      
+      - name: Test Gemini API failure scenario
+        run: |
+          ./scripts/simulate_failures.sh gemini invalid-key || true
+          python scripts/test_error_recovery.py --test gemini_failure || true
+          ./scripts/simulate_failures.sh gemini restore-key || true
+      
+      - name: Restore services
+        if: always()
+        run: |
+          ./scripts/simulate_failures.sh restore-all || true
+

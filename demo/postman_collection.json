@@ -1,0 +1,489 @@
+{
+	"info": {
+		"_postman_id": "ai-web-scraper-demo",
+		"name": "AI Web Scraper API - Demo Collection",
+		"description": "Complete API reference with example requests and responses for the AI Web Scraper API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Checks",
+			"item": [
+				{
+					"name": "Overall Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": ["{{base_url}}"],
+							"path": ["health"]
+						},
+						"description": "Get overall system health status including all components"
+					},
+					"response": []
+				},
+				{
+					"name": "Database Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health/database",
+							"host": ["{{base_url}}"],
+							"path": ["health", "database"]
+						},
+						"description": "Check MongoDB connection status and database health"
+					},
+					"response": []
+				},
+				{
+					"name": "Cache Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health/cache",
+							"host": ["{{base_url}}"],
+							"path": ["health", "cache"]
+						},
+						"description": "Check cache system status and statistics"
+					},
+					"response": []
+				},
+				{
+					"name": "Workflow Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/scrape/health",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "scrape", "health"]
+						},
+						"description": "Check workflow orchestrator health status"
+					},
+					"response": []
+				}
+			],
+			"description": "Health check endpoints for system monitoring"
+		},
+		{
+			"name": "Scrape Endpoints",
+			"item": [
+				{
+					"name": "AI Tools Query",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"disabled": true
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"Best AI agents for coding and software development\",\n  \"timeout_seconds\": 180,\n  \"store_results\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scrape",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "scrape"]
+						},
+						"description": "Example query for AI tools category. Expected response time: 30-90 seconds."
+					},
+					"response": []
+				},
+				{
+					"name": "Mutual Funds Query",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"Best mutual funds for beginners with low risk\",\n  \"timeout_seconds\": 180,\n  \"store_results\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scrape",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "scrape"]
+						},
+						"description": "Example query for mutual funds/investment category"
+					},
+					"response": []
+				},
+				{
+					"name": "General Query",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"Latest trends in artificial intelligence\",\n  \"timeout_seconds\": 180,\n  \"store_results\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scrape",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "scrape"]
+						},
+						"description": "Example general query for technology trends"
+					},
+					"response": []
+				},
+				{
+					"name": "With Custom Config",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"AI tools for image generation\",\n  \"processing_config\": {\n    \"enable_ai_analysis\": true,\n    \"enable_summarization\": true,\n    \"max_summary_length\": 300,\n    \"enable_duplicate_detection\": true\n  },\n  \"timeout_seconds\": 180,\n  \"store_results\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scrape",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "scrape"]
+						},
+						"description": "Query with custom processing configuration overrides"
+					},
+					"response": []
+				},
+				{
+					"name": "With Custom Timeout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"Complex query requiring more time\",\n  \"timeout_seconds\": 240,\n  \"store_results\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scrape",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "scrape"]
+						},
+						"description": "Query with custom timeout (30-600 seconds allowed)"
+					},
+					"response": []
+				},
+				{
+					"name": "No Storage",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"Test query without database storage\",\n  \"timeout_seconds\": 180,\n  \"store_results\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scrape",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "scrape"]
+						},
+						"description": "Query without storing results in database (for testing)"
+					},
+					"response": []
+				}
+			],
+			"description": "Main scraping endpoints with example queries"
+		},
+		{
+			"name": "Metrics & Monitoring",
+			"item": [
+				{
+					"name": "JSON Metrics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"description": "Admin API key required"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/metrics?format=json",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "metrics"],
+							"query": [
+								{
+									"key": "format",
+									"value": "json"
+								}
+							]
+						},
+						"description": "Get metrics in JSON format (requires admin API key)"
+					},
+					"response": []
+				},
+				{
+					"name": "Prometheus Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/metrics?format=prometheus",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "metrics"],
+							"query": [
+								{
+									"key": "format",
+									"value": "prometheus"
+								}
+							]
+						},
+						"description": "Get metrics in Prometheus text format"
+					},
+					"response": []
+				},
+				{
+					"name": "Metrics Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/metrics/health",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "metrics", "health"]
+						},
+						"description": "Get metrics system health status"
+					},
+					"response": []
+				},
+				{
+					"name": "Performance Metrics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"description": "Admin API key required"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/metrics/performance",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "metrics", "performance"]
+						},
+						"description": "Get detailed performance statistics (requires admin)"
+					},
+					"response": []
+				},
+				{
+					"name": "Cache Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-API-Key",
+								"value": "{{api_key}}",
+								"description": "Admin API key required"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/metrics/cache",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "metrics", "cache"]
+						},
+						"description": "Get detailed cache statistics (requires admin)"
+					},
+					"response": []
+				}
+			],
+			"description": "Metrics and monitoring endpoints"
+		},
+		{
+			"name": "Error Scenarios",
+			"item": [
+				{
+					"name": "Empty Query",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scrape",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "scrape"]
+						},
+						"description": "Test validation error with empty query (expected: 400)"
+					},
+					"response": []
+				},
+				{
+					"name": "Query Too Long",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"a\".repeat(1001)\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scrape",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "scrape"]
+						},
+						"description": "Test validation error with query exceeding max length (expected: 400)"
+					},
+					"response": []
+				},
+				{
+					"name": "Invalid Timeout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"Test query\",\n  \"timeout_seconds\": 20\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scrape",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "scrape"]
+						},
+						"description": "Test validation error with timeout < 30 seconds (expected: 400)"
+					},
+					"response": []
+				},
+				{
+					"name": "Invalid Config",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"Test query\",\n  \"processing_config\": {\n    \"invalid_field\": \"invalid_value\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scrape",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "scrape"]
+						},
+						"description": "Test validation error with malformed processing_config (expected: 400)"
+					},
+					"response": []
+				}
+			],
+			"description": "Error scenario testing endpoints"
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "api_key",
+			"value": "",
+			"type": "string",
+			"description": "API key for authentication (optional, required for admin endpoints)"
+		}
+	]
+}
+

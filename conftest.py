@@ -12,7 +12,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Dict, Any, Optional
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 
 # Import application modules
@@ -430,3 +430,119 @@ def sample_json_response():
             "version": "1.0"
         }
     }
+
+
+# Error Testing Fixtures
+
+@pytest.fixture
+def mock_invalid_api_key():
+    """Mock invalid API key for authentication error tests."""
+    return "invalid_key_12345"
+
+
+@pytest.fixture
+def mock_expired_api_key():
+    """Mock expired API key."""
+    from app.core.auth import APIKey
+    return APIKey(
+        key_id="expired_key",
+        key_hash="hash_expired",
+        name="Expired Test Key",
+        created_at=datetime.utcnow() - timedelta(days=365),
+        expires_at=datetime.utcnow() - timedelta(days=1),
+        is_active=True,
+        rate_limit=60,
+        permissions=["scrape"]
+    )
+
+
+@pytest.fixture
+def mock_mongodb_connection_error():
+    """Mock MongoDB connection error."""
+    def _raise_connection_error(*args, **kwargs):
+        raise ConnectionError("MongoDB connection failed")
+    return _raise_connection_error
+
+
+@pytest.fixture
+def mock_gemini_api_error():
+    """Mock Gemini API error."""
+    def _raise_api_error(*args, **kwargs):
+        raise Exception("API key not valid. Please pass a valid API key.")
+    return _raise_api_error
+
+
+@pytest.fixture
+def mock_timeout_error():
+    """Mock timeout error."""
+    import asyncio
+    def _raise_timeout(*args, **kwargs):
+        raise asyncio.TimeoutError("Operation timed out")
+    return _raise_timeout
+
+
+@pytest.fixture
+def mock_validation_error():
+    """Mock validation error."""
+    from app.utils.validation import ValidationException
+    return ValidationException(
+        "Query text is required and cannot be empty",
+        field="query",
+        recovery_suggestions=["Provide a non-empty query string"]
+    )
+
+
+@pytest.fixture
+def mock_partial_workflow_result():
+    """Mock workflow result with partial success."""
+    return {
+        "status": "error",
+        "error": {
+            "code": "AI_PROCESSING_ERROR",
+            "message": "AI processing failed"
+        },
+        "partial_results": {
+            "query_processing": {"category": "ai_tools", "confidence": 0.95},
+            "web_scraping": {"scraped_items": 5}
+        },
+        "execution": {
+            "total_duration_seconds": 45.2,
+            "completed_stages": ["query_processing", "web_scraping"],
+            "failed_stage": "ai_processing",
+            "stage_timings": {
+                "query_processing": 1.2,
+                "web_scraping": 44.0
+            },
+            "errors": [
+                {
+                    "stage": "ai_processing",
+                    "error_type": "GeminiAPIError",
+                    "error_message": "API quota exceeded"
+                }
+            ]
+        }
+    }
+
+
+@pytest.fixture
+def mock_api_key_manager_with_keys():
+    """Mock API key manager with test keys."""
+    from app.core.auth import APIKeyManager
+    
+    manager = APIKeyManager()
+    
+    # Add valid test key
+    valid_key = manager.generate_key(
+        name="Test Key",
+        permissions=["scrape", "admin"],
+        rate_limit=120
+    )
+    
+    # Add limited permission key
+    limited_key = manager.generate_key(
+        name="Limited Key",
+        permissions=["read"],
+        rate_limit=60
+    )
+    
+    return manager, valid_key, limited_key

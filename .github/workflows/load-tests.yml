@@ -1,0 +1,246 @@
+name: Load Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'app/**'
+      - 'scripts/test_load_performance.py'
+      - '.github/workflows/load-tests.yml'
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 2 * * 0'  # Weekly on Sundays at 2 AM UTC
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run preflight checks
+        run: |
+          python scripts/preflight_check.py --ci
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MONGODB_URI: mongodb://localhost:27017
+      
+      - name: Start FastAPI server
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MONGODB_URI: mongodb://localhost:27017
+      
+      - name: Wait for server to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:8000/health > /dev/null; then
+              echo "Server is ready"
+              break
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+      
+      - name: Run basic load test
+        run: |
+          python scripts/test_load_performance.py --concurrency 20 --duration 60 --save-results --json
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        continue-on-error: true
+      
+      - name: Run burst traffic test
+        run: |
+          python scripts/test_load_performance.py --burst --concurrency 50 --save-results --json
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        continue-on-error: true
+      
+      - name: Run cache validation test
+        run: |
+          python scripts/test_load_performance.py --cache-test --save-results --json
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        continue-on-error: true
+      
+      - name: Run rate limit validation test
+        run: |
+          python scripts/test_load_performance.py --rate-limit-test --save-results --json
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        continue-on-error: true
+      
+      - name: Analyze load test results
+        if: always()
+        run: |
+          LATEST=$$(ls -t test_results/load_test_*.json 2>/dev/null | head -1)
+          if [ -n "$$LATEST" ]; then
+            python scripts/analyze_load_test_results.py \
+              --results-file $$LATEST \
+              --format markdown \
+              --output test_results/load_test_analysis.md
+          fi
+        continue-on-error: true
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: load-test-results
+          path: test_results/
+      
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            try {
+              const testResultsDir = 'test_results';
+              if (!fs.existsSync(testResultsDir)) {
+                return;
+              }
+              
+              const files = fs.readdirSync(testResultsDir);
+              const latestFile = files
+                .filter(f => f.startsWith('load_test_') && f.endsWith('.json'))
+                .sort()
+                .reverse()[0];
+              
+              if (latestFile) {
+                const results = JSON.parse(fs.readFileSync(path.join(testResultsDir, latestFile), 'utf8'));
+                const summary = results.summary || {};
+                
+                let comment = '## Load Test Results\n\n';
+                comment += `- Total Requests: ${summary.total_requests || 0}\n`;
+                comment += `- Successful: ${summary.successful_requests || 0}\n`;
+                comment += `- Failed: ${summary.failed_requests || 0}\n`;
+                comment += `- Success Rate: ${(summary.success_rate || 0).toFixed(1)}%\n\n`;
+                comment += 'See artifacts for detailed reports.';
+                
+                github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: comment
+                });
+              }
+            } catch (error) {
+              console.error('Error creating comment:', error);
+            }
+      
+      - name: Check for critical regressions
+        if: always()
+        run: |
+          LATEST=$$(ls -t test_results/load_test_*.json 2>/dev/null | head -1)
+          if [ -n "$$LATEST" ]; then
+            SUCCESS_RATE=$$(python -c "import json; data=json.load(open('$LATEST')); print(data.get('summary', {}).get('success_rate', 0))")
+            if (( $(echo "$SUCCESS_RATE < 50" | bc -l) )); then
+              echo "❌ Critical performance regression detected: Success rate < 50%"
+              exit 1
+            fi
+          fi
+
+  baseline-comparison:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.ref == 'refs/heads/main'
+    
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Download previous baseline
+        uses: actions/download-artifact@v3
+        with:
+          name: baseline-load-test
+          path: test_results/
+        continue-on-error: true
+      
+      - name: Run current load test
+        run: |
+          python scripts/test_load_performance.py --all --save-results --json
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MONGODB_URI: mongodb://localhost:27017
+      
+      - name: Compare against baseline
+        if: always()
+        run: |
+          if [ -f test_results/baseline_load_test.json ]; then
+            LATEST=$$(ls -t test_results/load_test_*.json 2>/dev/null | head -1)
+            if [ -n "$$LATEST" ]; then
+              python scripts/analyze_load_test_results.py \
+                --results-file $$LATEST \
+                --baseline-file test_results/baseline_load_test.json \
+                --format markdown \
+                --output test_results/comparison_report.md
+            fi
+          fi
+        continue-on-error: true
+      
+      - name: Upload new baseline
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: baseline-load-test
+          path: test_results/baseline_load_test.json
+          retention-days: 90
+        continue-on-error: true
+      
+      - name: Upload comparison report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: load-test-comparison
+          path: test_results/comparison_report.md
+        continue-on-error: true
+

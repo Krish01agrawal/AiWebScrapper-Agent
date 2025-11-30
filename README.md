@@ -65,6 +65,91 @@ python scripts/preflight_check.py
 uvicorn app.main:app --reload
 ```
 
+## Demo Materials
+
+For team demonstrations and presentations, we provide comprehensive demo materials:
+
+### Interactive Demo Script
+
+Run an interactive demo with example queries and live progress tracking:
+
+```bash
+# Quick demo (pre-selected query)
+python scripts/demo.py --quick
+
+# Category-based demo
+python scripts/demo.py --category ai_tools
+
+# Custom query
+python scripts/demo.py --query "Your custom query here"
+
+# Full interactive menu
+python scripts/demo.py
+```
+
+The demo script provides:
+- Colored terminal output for visual appeal
+- Live progress tracking through scraping stages
+- Real-time metrics display
+- Cache demonstration
+- Error handling examples
+
+### API Collections
+
+**Postman Collection:**
+
+- Import `demo/postman_collection.json` into Postman
+- Includes all endpoints with example requests and responses
+- Pre-configured environment variables
+- Test scripts for validation
+
+**Curl Scripts:**
+
+```bash
+# Run comprehensive curl tests
+bash demo/curl_collection.sh
+
+# With API key
+bash demo/curl_collection.sh --api-key your_key_here
+
+# Save responses
+bash demo/curl_collection.sh --save-responses
+```
+
+### Live Monitoring Dashboard
+
+Open the monitoring dashboard for live metrics during demos:
+
+```bash
+# Open in default browser
+open demo/dashboard.html
+
+# Or navigate to file in browser
+# file:///path/to/traycerTry/demo/dashboard.html
+```
+
+The dashboard displays:
+- Real-time system health status
+- Request metrics and performance
+- Cache statistics
+- Recent activity log
+- Auto-refresh every 10 seconds
+
+### Documentation
+
+- **Demo Guide**: See [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md) for step-by-step presentation flow
+- **Known Limitations**: See [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) for system constraints and Q&A prep
+
+### Quick Demo Checklist
+
+1. Start MongoDB: `docker run -d -p 27017:27017 mongo:7.0`
+2. Validate environment: `python scripts/preflight_check.py`
+3. Start server: `bash scripts/start_server.sh`
+4. Open dashboard: `open demo/dashboard.html`
+5. Run demo: `python scripts/demo.py --quick`
+
+For detailed demo instructions, see [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md).
+
 ## 🛠️ Detailed Installation
 
 1. **Clone the repository**
@@ -157,6 +242,7 @@ The test suite includes:
 - **Integration Tests**: End-to-end workflow validation
 - **Real-World Scenario Tests**: Content quality and relevance validation
 - **Performance Tests**: Timing and benchmarking
+- **Load Tests**: Concurrent request handling, rate limiting, caching, memory usage, connection pooling
 
 The test suite is organized into the following modules:
 
@@ -499,6 +585,8 @@ curl -v -X POST "http://localhost:8000/api/v1/scrape" \
 
 - **Detailed guide:** `docs/INTEGRATION_TESTING.md`
 - **Real-world testing:** `docs/REAL_WORLD_TESTING.md`
+- **Demo Guide:** [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md) - Step-by-step guide for team presentations
+- **Known Limitations:** [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) - System constraints and known issues
 - **API documentation:** http://localhost:8000/docs
 - **Health checks:** http://localhost:8000/health
 
@@ -529,6 +617,143 @@ See [Real-World Testing Guide](docs/REAL_WORLD_TESTING.md) for comprehensive doc
 - Performance benchmarking
 - Edge case testing
 - Test report interpretation
+
+### Error Recovery Testing
+
+The AI Web Scraper includes comprehensive error recovery testing to ensure production readiness under various failure scenarios.
+
+**Quick Start:**
+```bash
+# Run all error scenario tests
+make test-errors
+
+# Run middleware error tests
+make test-middleware-errors
+
+# Run end-to-end error recovery tests
+make test-error-recovery
+
+# Run all error tests
+make test-all-errors
+```
+
+**Error Scenarios Tested:**
+
+1. **Authentication Errors**
+   - Invalid/missing API keys
+   - Expired/revoked keys
+   - Insufficient permissions
+
+2. **Infrastructure Failures**
+   - MongoDB connection failures
+   - MongoDB timeouts
+   - Service unavailability
+
+3. **External API Failures**
+   - Gemini API key errors
+   - Quota exceeded
+   - Rate limiting
+   - Network errors
+
+4. **Timeout Scenarios**
+   - Query processing timeouts
+   - Web scraping timeouts
+   - AI processing timeouts
+   - Overall workflow timeouts
+
+5. **Validation Errors**
+   - Invalid input validation
+   - Configuration errors
+   - Malicious input handling
+
+6. **Graceful Degradation**
+   - Partial scraping failures
+   - Partial processing failures
+   - Database storage failures
+
+**Simulating Failures:**
+```bash
+# Simulate MongoDB failure
+make simulate-mongodb-failure
+
+# Simulate Gemini API failure
+make simulate-gemini-failure
+
+# Restore all services
+make restore-services
+
+# Run tests with simulated failures
+make test-with-failures
+```
+
+**Expected Behavior:**
+
+- **Graceful Degradation:** System continues with partial results when non-critical stages fail
+- **Clear Error Messages:** All errors include specific error codes and recovery suggestions
+- **Partial Results:** Completed stages return results even if later stages fail
+- **Retry Guidance:** Error responses indicate whether retry is possible
+- **Structured Logging:** All errors logged with context for debugging
+
+**Detailed Documentation:**
+See [Error Recovery Testing Guide](docs/ERROR_RECOVERY_TESTING.md) for comprehensive documentation on:
+- Error scenario details
+- Recovery suggestions
+- Graceful degradation behavior
+- Monitoring and alerting
+- Troubleshooting guide
+
+### Load Testing & Performance Validation
+
+The AI Web Scraper includes comprehensive load testing infrastructure to validate concurrent request handling, rate limiting, caching, memory usage, and MongoDB connection pooling under various load scenarios.
+
+**Quick Start:**
+```bash
+# Basic load test
+make test-load
+
+# Run all load test scenarios
+make test-load-all
+
+# Analyze load test results
+make analyze-load-results
+```
+
+**Test Scenarios:**
+- **Gradual Ramp-Up**: Tests system behavior as concurrent requests increase from 1 to 50
+- **Burst Traffic**: Tests system resilience with sudden spikes of 50 concurrent requests
+- **Sustained Load**: Maintains constant concurrent load for extended periods
+- **Cache Validation**: Tests cache hit/miss rates and effectiveness
+- **Rate Limit Validation**: Tests rate limiting enforcement and correctness
+- **Connection Pool Stress**: Monitors MongoDB connection pool behavior under load
+
+**Understanding Results:**
+- Response time percentiles (p50, p90, p95, p99) indicate performance under load
+- Cache hit rates show caching effectiveness
+- Memory growth patterns help detect memory leaks
+- Connection pool utilization indicates database connection health
+
+**Performance Benchmarks:**
+- Response time p95: < 30 seconds under normal load
+- Cache hit rate: > 50% (after warm-up)
+- Memory growth: < 10MB per 100 requests
+- Connection pool utilization: < 80%
+
+**Troubleshooting:**
+- Rate limiting too aggressive: Increase `api_rate_limit_requests_per_minute` in config
+- Cache not working: Verify `cache_enabled = True` and check cache headers
+- Memory leaks: Review object lifecycle and connection management
+- Connection pool exhaustion: Increase `mongodb_max_pool_size` in config
+
+**CI/CD Integration:**
+Load tests run automatically on push to main/develop, pull requests, and weekly scheduled runs. Results are compared against baselines to detect performance regressions.
+
+**Detailed Documentation:**
+See [Load Testing Guide](docs/LOAD_TESTING.md) for comprehensive documentation on:
+- Test scenario details
+- Metrics interpretation
+- Performance benchmarks
+- Troubleshooting guide
+- Best practices
 
 ### CI/CD Integration
 
