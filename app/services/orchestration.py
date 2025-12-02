@@ -283,9 +283,12 @@ class WorkflowOrchestrator:
                 # If api_default_processing_config is False and no config provided, use minimal config
                 config = ProcessingConfig()
             
-            processed_content = await self.processing_orchestrator.process_scraped_content(
+            processing_result = await self.processing_orchestrator.process_scraped_content(
                 scraped_content, parsed_query, config
             )
+            
+            # Extract processed contents from ProcessingResult
+            processed_content = processing_result.processed_contents if hasattr(processing_result, 'processed_contents') else []
             
             self.logger.info(f"AI processing completed. Processed {len(processed_content)} items")
             
@@ -306,30 +309,31 @@ class WorkflowOrchestrator:
             self.logger.info("Storing results in database...")
             
             # Store query
-            query_id = await self.database_service.store_query(parsed_query)
+            query_doc, session_id = await self.database_service.process_and_store_query(parsed_query)
+            query_id = query_doc.id
             
             # Store scraped content
-            content_ids = []
-            for content in scraped_content:
-                content_id = await self.database_service.store_scraped_content(content, query_id)
-                content_ids.append(content_id)
+            scraped_docs, content_id_mapping = await self.database_service.store_scraping_results(
+                scraped_content, query_id, session_id
+            )
+            scraped_content_ids = [str(doc.id) for doc in scraped_docs if doc.id is not None]
             
             # Store processed content
-            processed_ids = []
-            for content in processed_content:
-                processed_id = await self.database_service.store_processed_content(content, query_id)
-                processed_ids.append(processed_id)
+            processed_docs = await self.database_service.store_processing_results(
+                processed_content, query_id, content_id_mapping, session_id
+            )
+            processed_content_ids = [str(doc.id) for doc in processed_docs if doc.id is not None]
             
             storage_result = {
                 "query_id": str(query_id),
-                "scraped_content_ids": [str(cid) for cid in content_ids],
-                "processed_content_ids": [str(pid) for pid in processed_ids],
-                "total_stored_items": len(content_ids) + len(processed_ids)
+                "scraped_content_ids": scraped_content_ids,
+                "processed_content_ids": processed_content_ids,
+                "total_stored_items": len(scraped_content_ids) + len(processed_content_ids)
             }
             
             self.logger.info(
                 f"Results stored successfully. Query ID: {query_id}, "
-                f"Scraped items: {len(content_ids)}, Processed items: {len(processed_ids)}"
+                f"Scraped items: {len(scraped_content_ids)}, Processed items: {len(processed_content_ids)}"
             )
             
             return storage_result
