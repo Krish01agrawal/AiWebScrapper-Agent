@@ -18,7 +18,7 @@ class IndexManager:
     
     def __init__(self, database: Optional[AsyncIOMotorDatabase] = None):
         """Initialize index manager with database connection."""
-        self.database = database or get_database()
+        self.database = database if database is not None else get_database()
         self.collections = {
             "queries": self.database.queries,
             "content": self.database.content,

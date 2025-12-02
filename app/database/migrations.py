@@ -19,7 +19,7 @@ class MigrationManager:
     
     def __init__(self, database: Optional[AsyncIOMotorDatabase] = None):
         """Initialize migration manager with database connection."""
-        self.database = database or get_database()
+        self.database = database if database is not None else get_database()
         self.migrations_collection: AsyncIOMotorCollection = self.database.migrations
         self.migrations: List[Dict[str, Any]] = []
         self._load_migrations()

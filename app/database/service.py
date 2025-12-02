@@ -31,7 +31,7 @@ class DatabaseService:
     
     def __init__(self, database: Optional[AsyncIOMotorDatabase] = None):
         """Initialize service with database connection and repositories."""
-        self.database = database or get_database()
+        self.database = database if database is not None else get_database()
         self.query_repo = QueryRepository(self.database)
         self.content_repo = ScrapedContentRepository(self.database)
         self.processed_repo = ProcessedContentRepository(self.database)

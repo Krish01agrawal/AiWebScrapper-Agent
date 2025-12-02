@@ -35,7 +35,7 @@ def format_success_response(
     }
     
     if metadata:
-        response["execution_metadata"] = metadata.model_dump()
+        response["execution_metadata"] = metadata.model_dump(mode='json')
     
     return response
 
@@ -74,7 +74,7 @@ def format_error_response(
         response["error"]["details"] = [detail.model_dump() for detail in details]
     
     if metadata:
-        response["execution_metadata"] = metadata.model_dump()
+        response["execution_metadata"] = metadata.model_dump(mode='json')
     
     return response
 
@@ -366,6 +366,6 @@ def create_partial_success_response(
     }
     
     if metadata:
-        response["execution_metadata"] = metadata.model_dump()
+        response["execution_metadata"] = metadata.model_dump(mode='json')
     
     return response

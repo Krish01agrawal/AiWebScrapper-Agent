@@ -238,7 +238,7 @@ class WorkflowOrchestrator:
         """Scrape content using ScraperOrchestrator."""
         try:
             self.logger.info("Starting content scraping...")
-            scraped_content = await self.scraper_orchestrator.scrape_for_query(parsed_query)
+            scraped_content = await self.scraper_orchestrator.execute(parsed_query)
             
             self.logger.info(f"Scraped {len(scraped_content)} content items")
             

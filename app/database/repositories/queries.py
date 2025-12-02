@@ -21,7 +21,7 @@ class QueryRepository:
     
     def __init__(self, database: Optional[AsyncIOMotorDatabase] = None):
         """Initialize repository with database connection."""
-        self.database = database or get_database()
+        self.database = database if database is not None else get_database()
         self.collection: AsyncIOMotorCollection = self.database.queries
     
     async def save_query(self, query_doc: QueryDocument) -> QueryDocument:
