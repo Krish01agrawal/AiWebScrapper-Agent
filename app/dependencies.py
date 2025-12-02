@@ -38,10 +38,14 @@ from app.database.service import DatabaseService
 from app.services.orchestration import WorkflowOrchestrator
 
 
-@lru_cache(maxsize=1)
+_gemini_client_cache: GeminiClient | None = None
+
 def get_cached_gemini_client() -> GeminiClient:
     """Get cached GeminiClient instance to avoid creating new clients per request."""
-    return GeminiClient()
+    global _gemini_client_cache
+    if _gemini_client_cache is None:
+        _gemini_client_cache = GeminiClient()
+    return _gemini_client_cache
 
 
 # Database dependency
@@ -157,8 +161,9 @@ async def get_scraper_orchestrator() -> ScraperOrchestrator:
     try:
         gemini_client = await get_gemini_client()
         return ScraperOrchestrator(gemini_client=gemini_client)
-    except RuntimeError as e:
-        from fastapi import HTTPException
+    except HTTPException:
+        raise  # Re-raise HTTPException as-is
+    except Exception as e:
         raise HTTPException(
             status_code=503,
             detail=f"Scraper orchestrator unavailable: {str(e)}"
@@ -341,23 +346,32 @@ DatabaseServiceDep = Annotated[DatabaseService, Depends(get_database_service)]
 
 async def get_workflow_orchestrator() -> WorkflowOrchestrator:
     """Get WorkflowOrchestrator instance with all required dependencies."""
+    import logging
+    logger = logging.getLogger(__name__)
     try:
+        logger.info("Getting query_processor...")
         query_processor = await get_query_processor()
+        logger.info("Getting scraper_orchestrator...")
         scraper_orchestrator = await get_scraper_orchestrator()
+        logger.info("Getting processing_orchestrator...")
         processing_orchestrator = await get_processing_orchestrator()
+        logger.info("Getting database_service...")
         database_service = await get_database_service()
         
+        logger.info("Creating WorkflowOrchestrator...")
         return WorkflowOrchestrator(
             query_processor=query_processor,
             scraper_orchestrator=scraper_orchestrator,
             processing_orchestrator=processing_orchestrator,
             database_service=database_service
         )
+    except HTTPException:
+        raise  # Re-raise HTTPException as-is
     except Exception as e:
-        from fastapi import HTTPException
+        logger.error(f"Failed to create WorkflowOrchestrator: {type(e).__name__}: {e}")
         raise HTTPException(
             status_code=503,
-            detail=f"Workflow orchestrator unavailable: {str(e)}"
+            detail=f"Workflow orchestrator unavailable: {type(e).__name__}: {str(e)}"
         )
 
 

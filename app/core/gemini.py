@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class GeminiClient:
     """Wrapper class for Gemini GenerativeModel to provide consistent interface for agents."""
     
-    def __init__(self, model_name: str = 'gemini-1.5-pro'):
+    def __init__(self, model_name: str = 'gemini-2.0-flash'):
         """Initialize the Gemini client with a specific model."""
         self.model_name = model_name
         self._model: Optional[genai.GenerativeModel] = None
@@ -103,7 +103,7 @@ def init_gemini_client() -> Optional[genai.GenerativeModel]:
         genai.configure(api_key=settings.gemini_api_key)
         
         # Create the model instance
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         # Initialize client without blocking API test during startup
         logger.info("Gemini client initialized successfully")
@@ -126,7 +126,7 @@ def init_gemini_client() -> Optional[genai.GenerativeModel]:
 def get_gemini_model() -> Optional[genai.GenerativeModel]:
     """Get the Gemini model instance."""
     try:
-        return genai.GenerativeModel('gemini-1.5-pro')
+        return genai.GenerativeModel('gemini-2.0-flash')
     except Exception as e:
         logger.error(f"Failed to get Gemini model: {e}")
         return None

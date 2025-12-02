@@ -296,7 +296,7 @@ async def scrape_content(
                             "Set timeout_seconds to at most 600 seconds",
                             "Use a value between 30 and 600 seconds"
                         ]
-                    )
+            )
         except ValidationException as e:
             error_detail = ErrorDetail(
                 error_code="VALIDATION_ERROR",

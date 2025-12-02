@@ -33,8 +33,10 @@ class ScraperOrchestrator(BaseAgent):
         super().__init__(name, description, version, gemini_client, settings)
         self.discovery_agent = discovery_agent or SiteDiscoveryAgent(gemini_client=gemini_client)
         self.extractor_agent = extractor_agent or ContentExtractorAgent(gemini_client=gemini_client)
-        # Use global settings instead of optional parameter
-        self._semaphore = asyncio.Semaphore(settings.scraper_concurrency)
+        # Use global settings instead of optional parameter (settings param can be None)
+        # The 'settings' parameter shadows the global import, so we reference the module-level import
+        import app.core.config as config_module
+        self._semaphore = asyncio.Semaphore(config_module.settings.scraper_concurrency)
     
     async def execute(self, parsed_query: ParsedQuery) -> List[ScrapedContent]:
         """Execute the complete scraping workflow for a parsed query."""

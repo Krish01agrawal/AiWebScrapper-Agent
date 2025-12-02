@@ -3,7 +3,7 @@ fastapi>=0.104.1,<0.105.0
 uvicorn[standard]>=0.24.0,<0.25.0
 
 # MongoDB async driver
-motor>=3.3.2,<3.4.0
+motor>=3.6.0,<4.0.0
 pymongo[srv]>=4.6.0,<5.0.0
 
 # Google Gemini API
