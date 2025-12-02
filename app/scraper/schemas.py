@@ -263,6 +263,10 @@ class ContentExtractionConfig(BaseModel):
     normalize_whitespace: bool = Field(default=True, description="Normalize whitespace in content")
     remove_duplicate_lines: bool = Field(default=True, description="Remove duplicate lines")
     
+    # Media extraction
+    include_images: bool = Field(default=True, description="Whether to extract images")
+    include_links: bool = Field(default=True, description="Whether to extract links")
+    
     model_config = {
         "json_schema_extra": {
             "example": {

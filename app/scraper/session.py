@@ -3,10 +3,12 @@ HTTP session management for web scraping operations.
 """
 import asyncio
 import logging
+import ssl
 from typing import Optional
 import aiohttp
 from aiohttp import ClientTimeout, TCPConnector
 from aiohttp.resolver import AsyncResolver
+import certifi
 
 from app.core.config import settings
 
@@ -25,6 +27,9 @@ async def init_scraper_session() -> None:
         return
     
     try:
+        # Create SSL context with certifi certificates
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        
         # Create custom connector with optimized settings for scraping
         connector = TCPConnector(
             limit=settings.scraper_concurrency * 2,  # Allow more connections than concurrency limit
@@ -33,6 +38,7 @@ async def init_scraper_session() -> None:
             enable_cleanup_closed=True,
             resolver=AsyncResolver(),
             ttl_dns_cache=300,  # Cache DNS results for 5 minutes
+            ssl=ssl_context,  # Use certifi certificates for SSL verification
         )
         
         # Create timeout configuration

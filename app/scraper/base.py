@@ -149,7 +149,19 @@ class BaseScraperAgent(BaseAgent):
                                         can_retry=False
                                     ))
                         
-                        return response
+                        # Read content inside the context manager before it closes
+                        html_content = await response.text()
+                        # Create a mock response-like object to maintain compatibility
+                        class ResponseWrapper:
+                            def __init__(self, status, text_content, headers):
+                                self.status = status
+                                self._text = text_content
+                                self.headers = headers
+                            
+                            async def text(self):
+                                return self._text
+                        
+                        return ResponseWrapper(response.status, html_content, response.headers)
                         
                 except asyncio.TimeoutError:
                     if attempt < settings.scraper_max_retries:

@@ -262,7 +262,7 @@ class ContentExtractorAgent(BaseScraperAgent):
         ]
         
         for tag in twitter_tags:
-            twitter_content = soup.find('meta', name=tag)
+            twitter_content = soup.find('meta', attrs={'name': tag})
             if twitter_content and twitter_content.get('content'):
                 content = twitter_content['content']
                 if len(content.strip()) >= self.config.min_content_length:

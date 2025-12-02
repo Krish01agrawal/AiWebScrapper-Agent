@@ -34,18 +34,32 @@ class SiteDiscoveryAgent(BaseScraperAgent):
     
     def _initialize_domain_patterns(self) -> Dict[str, List[str]]:
         """Initialize domain patterns for different query categories."""
+        # Scraper-friendly test sites that allow scraping
+        scraper_friendly_sites = [
+            "httpbin.org",  # Known scraper-friendly test site
+            "example.com",  # RFC example domain
+            "httpstat.us",  # HTTP status code testing
+            "jsonplaceholder.typicode.com",  # JSON API for testing
+        ]
+        
         default_patterns = {
             "ai_tools": [
                 "producthunt.com", "github.com", "alternativeto.net", "saashub.com",
                 "g2.com", "capterra.com", "techcrunch.com", "venturebeat.com"
-            ],
+            ] + scraper_friendly_sites,
             "mutual_funds": [
                 "morningstar.com", "vanguard.com", "fidelity.com", "schwab.com",
                 "tdameritrade.com", "etrade.com", "yahoo.com/finance", "marketwatch.com"
-            ],
+            ] + scraper_friendly_sites,
             "general": [
                 "wikipedia.org", "reddit.com", "stackoverflow.com", "quora.com",
                 "medium.com", "dev.to", "hashnode.dev", "substack.com"
+            ] + scraper_friendly_sites,
+            "documentation": scraper_friendly_sites + [
+                "docs.python.org", "developer.mozilla.org", "www.w3.org"
+            ],
+            "tutorial": scraper_friendly_sites + [
+                "www.w3schools.com", "www.tutorialspoint.com"
             ]
         }
         
