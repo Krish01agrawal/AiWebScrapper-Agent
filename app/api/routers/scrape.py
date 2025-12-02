@@ -38,8 +38,6 @@ class ScrapeRequest(BaseModel):
     )
     timeout_seconds: Optional[int] = Field(
         None, 
-        ge=30, 
-        le=600, 
         description="Custom timeout for this request"
     )
     store_results: bool = Field(
@@ -278,6 +276,27 @@ async def scrape_content(
             validated_metadata = validate_request_metadata(
                 request.metadata.model_dump() if request.metadata else {}
             )
+            
+            # Validate timeout_seconds if provided
+            if request.timeout_seconds is not None:
+                if request.timeout_seconds < 30:
+                    raise ValidationException(
+                        f"timeout_seconds must be at least 30 seconds, got {request.timeout_seconds}",
+                        field="timeout_seconds",
+                        recovery_suggestions=[
+                            "Set timeout_seconds to at least 30 seconds",
+                            "Use a value between 30 and 600 seconds"
+                        ]
+                    )
+                if request.timeout_seconds > 600:
+                    raise ValidationException(
+                        f"timeout_seconds must be at most 600 seconds, got {request.timeout_seconds}",
+                        field="timeout_seconds",
+                        recovery_suggestions=[
+                            "Set timeout_seconds to at most 600 seconds",
+                            "Use a value between 30 and 600 seconds"
+                        ]
+                    )
         except ValidationException as e:
             error_detail = ErrorDetail(
                 error_code="VALIDATION_ERROR",

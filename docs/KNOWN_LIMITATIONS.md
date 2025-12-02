@@ -8,7 +8,7 @@ This document provides a comprehensive overview of system limitations, constrain
 
 - **Typical queries**: 30-90 seconds
 - **Complex queries**: 90-180 seconds
-- **Maximum timeout**: 300 seconds (5 minutes)
+- **Maximum timeout**: 600 seconds (10 minutes)
 - **Factors affecting speed**: number of sites to scrape, content size, AI processing complexity
 - **Recommendation**: Set realistic timeout expectations for users
 
@@ -157,7 +157,7 @@ This document provides a comprehensive overview of system limitations, constrain
 
 - **CORS**: Configured for specific origins (update `CORS_ORIGINS` for new clients)
 - **Request size**: Limited by FastAPI defaults (10MB body size)
-- **Timeout**: Client must support long-running requests (up to 5 minutes)
+- **Timeout**: Client must support long-running requests (up to 10 minutes)
 
 ### Response Size
 

@@ -200,19 +200,38 @@ curl -X POST "http://localhost:8000/api/v1/scrape" \
 - Status codes: 400 for validation, 500 for server errors
 - Graceful degradation: Partial results when possible
 
-**Timeout Scenario:**
+**Timeout Validation Error (Business Rule):**
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/scrape" \
   -H "Content-Type: application/json" \
-  -d '{"query": "test", "timeout_seconds": 1}'
+  -d '{"query": "Test query", "timeout_seconds": 20}'
 ```
 
 **Talking Points:**
 
-- Timeout handling: Request aborted cleanly
-- Partial results: Returned if available
-- Retry guidance: "Try increasing timeout_seconds parameter"
+- Business-rule validation: `timeout_seconds` must be between 30-600 seconds
+- Returns HTTP 400 with `VALIDATION_ERROR` code
+- Clear error message: "timeout_seconds must be at least 30 seconds, got 20"
+- Recovery suggestions provided: "Set timeout_seconds to at least 30 seconds"
+- This is a validation error, not a workflow timeout
+
+**Real Workflow Timeout Scenario:**
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/scrape" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Complex query requiring extensive processing", "timeout_seconds": 30}'
+```
+
+**Talking Points:**
+
+- Valid timeout provided (30 seconds, within allowed range)
+- Workflow execution exceeds the timeout during actual processing
+- Returns HTTP 500 with `WORKFLOW_TIMEOUT` error code
+- Partial results: Returned if available from completed stages
+- Retry guidance: "Try increasing the timeout_seconds parameter"
+- This demonstrates actual workflow timeout handling, not validation
 
 ## Q&A Preparation
 

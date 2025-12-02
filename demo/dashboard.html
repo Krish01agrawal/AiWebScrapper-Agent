@@ -264,6 +264,33 @@
             border-radius: 4px;
             background: #1a1a1a;
         }
+        
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            height: 150px;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        
+        .bar {
+            flex: 1;
+            background: linear-gradient(180deg, #4a9eff, #2a5f9f);
+            border-radius: 4px 4px 0 0;
+            min-height: 5px;
+            position: relative;
+            transition: height 0.3s ease;
+        }
+        
+        .bar-label {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            color: #b0b0b0;
+            white-space: nowrap;
+        }
 
         @media (max-width: 768px) {
             .grid {
@@ -291,6 +318,7 @@
             <div class="last-updated" id="last-updated">Last updated: --</div>
         </div>
         <div class="controls">
+            <input type="text" id="api-key-input" placeholder="API Key (optional)" style="padding: 8px 16px; background: #3a3a3a; color: #e0e0e0; border: 1px solid #4a4a4a; border-radius: 4px; font-size: 14px; width: 200px;">
             <button id="refresh-btn">Refresh</button>
             <label>
                 <input type="checkbox" id="auto-refresh-toggle" checked>
@@ -332,6 +360,9 @@
             </div>
             <div class="progress-bar">
                 <div class="progress-fill" id="success-rate-bar" style="width: 100%"></div>
+            </div>
+            <div class="chart-container">
+                <div class="bar-chart" id="success-rate-chart"></div>
             </div>
         </div>
 
@@ -428,6 +459,33 @@
         let autoRefresh = true;
         let refreshTimeout = null;
         const activityHistory = [];
+        let apiKey = '';
+        
+        // Load API key from URL parameter or localStorage
+        function loadApiKey() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const keyFromUrl = urlParams.get('api_key');
+            if (keyFromUrl) {
+                apiKey = keyFromUrl;
+                document.getElementById('api-key-input').value = apiKey;
+                localStorage.setItem('dashboard_api_key', apiKey);
+            } else {
+                const savedKey = localStorage.getItem('dashboard_api_key');
+                if (savedKey) {
+                    apiKey = savedKey;
+                    document.getElementById('api-key-input').value = apiKey;
+                }
+            }
+        }
+        
+        // Save API key to localStorage
+        function saveApiKey() {
+            if (apiKey) {
+                localStorage.setItem('dashboard_api_key', apiKey);
+            } else {
+                localStorage.removeItem('dashboard_api_key');
+            }
+        }
 
         // Fetch health data
         async function fetchHealth() {
@@ -444,7 +502,13 @@
         // Fetch metrics data
         async function fetchMetrics() {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/v1/metrics?format=json`);
+                const headers = {};
+                if (apiKey) {
+                    headers['X-API-Key'] = apiKey;
+                }
+                const response = await fetch(`${API_BASE_URL}/api/v1/metrics?format=json`, {
+                    headers: headers
+                });
                 if (!response.ok) {
                     if (response.status === 403) {
                         console.warn('Metrics endpoint requires admin API key');
@@ -493,6 +557,9 @@
                 if (scrapeHealth) {
                     updateScrapeHealth(scrapeHealth);
                 }
+                
+                // Update activity log
+                updateActivityLog(metrics, health);
 
                 // Update timestamp
                 document.getElementById('last-updated').textContent = 
@@ -500,9 +567,10 @@
 
                 // Update status indicator
                 const indicator = document.getElementById('status-indicator');
-                if (health && health.status === 'healthy') {
+                const healthStatus = health && health.status ? health.status.toLowerCase() : 'unknown';
+                if (healthStatus === 'healthy') {
                     indicator.className = 'status-indicator status-healthy';
-                } else if (health && health.status === 'degraded') {
+                } else if (healthStatus === 'degraded') {
                     indicator.className = 'status-indicator status-unhealthy';
                 } else {
                     indicator.className = 'status-indicator status-error';
@@ -515,9 +583,11 @@
 
         // Update system health cards
         function updateSystemHealth(health) {
-            const status = health.status || 'unknown';
+            const status = (health.status || 'unknown').toLowerCase();
             document.getElementById('overall-status').textContent = status.toUpperCase();
-            document.getElementById('overall-status').className = `metric-value ${status === 'healthy' ? 'success' : status === 'degraded' ? 'warning' : 'error'}`;
+            // Map status to UI buckets (healthy, degraded, error) in case-insensitive way
+            const statusNormalized = status === 'healthy' ? 'healthy' : status === 'degraded' ? 'degraded' : 'error';
+            document.getElementById('overall-status').className = `metric-value ${statusNormalized === 'healthy' ? 'success' : statusNormalized === 'degraded' ? 'warning' : 'error'}`;
 
             const components = health.components || {};
 
@@ -536,16 +606,19 @@
             const card = document.getElementById(`${component}-card`);
             if (!card || !data) return;
 
-            const status = data.status || 'unknown';
+            const status = (data.status || 'unknown').toLowerCase();
             const responseTime = data.response_time_ms || 0;
+
+            // Map status to UI buckets (healthy, degraded, unhealthy) in case-insensitive way
+            const statusNormalized = status === 'healthy' ? 'healthy' : status === 'degraded' ? 'degraded' : 'unhealthy';
 
             // Update status badge
             const statusBadge = document.getElementById(`${component}-status`);
             statusBadge.textContent = status.toUpperCase();
-            statusBadge.className = `status-badge ${status === 'healthy' ? 'healthy' : status === 'degraded' ? 'degraded' : 'unhealthy'}`;
+            statusBadge.className = `status-badge ${statusNormalized}`;
 
             // Update card border
-            card.className = `component-card ${status === 'healthy' ? 'healthy' : status === 'degraded' ? 'degraded' : 'unhealthy'}`;
+            card.className = `component-card ${statusNormalized}`;
 
             // Update response time
             const responseTimeEl = document.getElementById(`${component}-response-time`);
@@ -554,6 +627,29 @@
             }
         }
 
+        // Update bar chart
+        function updateBarChart(chartId, values, labels) {
+            const chart = document.getElementById(chartId);
+            if (!chart) return;
+            
+            chart.innerHTML = '';
+            const maxValue = Math.max(...values, 1);
+            
+            values.forEach((value, index) => {
+                const bar = document.createElement('div');
+                bar.className = 'bar';
+                const height = (value / maxValue) * 100;
+                bar.style.height = `${height}%`;
+                
+                const label = document.createElement('div');
+                label.className = 'bar-label';
+                label.textContent = labels[index] || '';
+                bar.appendChild(label);
+                
+                chart.appendChild(bar);
+            });
+        }
+        
         // Update metrics
         function updateMetrics(metrics) {
             const metricsData = metrics.metrics || {};
@@ -570,6 +666,13 @@
             document.getElementById('success-rate').textContent = `${successRate.toFixed(1)}%`;
             document.getElementById('success-rate-bar').style.width = `${successRate}%`;
             document.getElementById('success-rate').className = `metric-value ${successRate >= 90 ? 'success' : successRate >= 70 ? 'warning' : 'error'}`;
+            
+            // Update success rate chart with recent history
+            if (activityHistory.length > 0) {
+                const recentRates = activityHistory.slice(-10).map(e => e.successRate || 100);
+                const labels = recentRates.map((_, i) => `T${i + 1}`);
+                updateBarChart('success-rate-chart', recentRates, labels);
+            }
 
             // Average response time
             const durationHistogram = metricsData.api_request_duration_seconds || {};
@@ -603,6 +706,109 @@
             // Additional scrape-specific health information can be displayed here
             console.log('Scrape health:', scrapeHealth);
         }
+        
+        // Update activity log
+        function updateActivityLog(metrics, health) {
+            const activityLog = document.getElementById('activity-log');
+            if (!activityLog) return;
+            
+            // Clear existing placeholder
+            activityLog.innerHTML = '';
+            
+            // Try to derive activity from metrics
+            if (metrics && metrics.metrics) {
+                const metricsData = metrics.metrics;
+                const totalRequests = metricsData.api_requests_total?.value || 0;
+                const totalErrors = metricsData.api_errors_total?.value || 0;
+                
+                // Calculate success rate for history
+                const successRate = totalRequests > 0 
+                    ? ((totalRequests - totalErrors) / totalRequests * 100)
+                    : 100;
+                
+                // Add to activity history
+                activityHistory.push({
+                    query: `API Request #${totalRequests}`,
+                    status: totalErrors > 0 ? 'warning' : 'success',
+                    timestamp: new Date().toISOString(),
+                    meta: `Success Rate: ${successRate.toFixed(1)}%`,
+                    successRate: successRate
+                });
+                
+                // Keep only last 10 entries
+                if (activityHistory.length > 10) {
+                    activityHistory.shift();
+                }
+                
+                // Add activity entries based on metrics
+                const entries = [];
+                
+                // Add a summary entry for total requests
+                if (totalRequests > 0) {
+                    entries.push({
+                        query: `Total API Requests: ${totalRequests}`,
+                        status: totalErrors > 0 ? 'warning' : 'success',
+                        timestamp: new Date().toISOString(),
+                        meta: `Errors: ${totalErrors}`
+                    });
+                }
+                
+                // Add cache hit rate entry
+                const cacheHitRate = metricsData.cache_hit_rate?.value || 0;
+                if (cacheHitRate > 0) {
+                    entries.push({
+                        query: `Cache Hit Rate: ${(cacheHitRate * 100).toFixed(1)}%`,
+                        status: cacheHitRate > 0.5 ? 'success' : 'warning',
+                        timestamp: new Date().toISOString(),
+                        meta: 'Cache performance'
+                    });
+                }
+                
+                // Add response time entry
+                const durationHist = metricsData.api_request_duration_seconds || {};
+                if (durationHist.count > 0) {
+                    const avgDuration = (durationHist.sum / durationHist.count * 1000).toFixed(0);
+                    entries.push({
+                        query: `Average Response Time: ${avgDuration}ms`,
+                        status: avgDuration < 30000 ? 'success' : avgDuration < 90000 ? 'warning' : 'error',
+                        timestamp: new Date().toISOString(),
+                        meta: 'Performance metric'
+                    });
+                }
+                
+                // Use activity history if available, otherwise use entries
+                const recentEntries = activityHistory.length > 0 
+                    ? activityHistory.slice(-10).reverse()
+                    : entries.slice(-10);
+                
+                if (recentEntries.length === 0) {
+                    activityLog.innerHTML = '<div class="activity-item"><div class="activity-query">Waiting for activity...</div></div>';
+                    return;
+                }
+                
+                // Render entries
+                recentEntries.forEach(entry => {
+                    const item = document.createElement('div');
+                    item.className = `activity-item ${entry.status}`;
+                    
+                    const queryDiv = document.createElement('div');
+                    queryDiv.className = 'activity-query';
+                    queryDiv.textContent = entry.query;
+                    
+                    const metaDiv = document.createElement('div');
+                    metaDiv.className = 'activity-meta';
+                    const time = new Date(entry.timestamp);
+                    metaDiv.textContent = `${entry.meta} • ${time.toLocaleTimeString()}`;
+                    
+                    item.appendChild(queryDiv);
+                    item.appendChild(metaDiv);
+                    activityLog.appendChild(item);
+                });
+            } else {
+                // No metrics available
+                activityLog.innerHTML = '<div class="activity-item"><div class="activity-query">No activity data available</div><div class="activity-meta">Provide API key to view metrics</div></div>';
+            }
+        }
 
         // Auto-refresh
         function startAutoRefresh() {
@@ -614,6 +820,17 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
+            // Load API key
+            loadApiKey();
+            
+            // API key input handler
+            document.getElementById('api-key-input').addEventListener('input', (e) => {
+                apiKey = e.target.value.trim();
+                saveApiKey();
+                // Refresh metrics when API key changes
+                updateDashboard();
+            });
+            
             // Initial update
             updateDashboard();
 

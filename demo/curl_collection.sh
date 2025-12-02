@@ -14,6 +14,11 @@ SAVE_RESPONSES=false
 VERBOSE=false
 QUICK_MODE=false
 
+# Test counters
+TOTAL_TESTS=0
+SUCCESSFUL_TESTS=0
+FAILED_TESTS=0
+
 # Color codes
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -51,10 +56,11 @@ run_curl() {
     local url="$3"
     local data="${4:-}"
     local headers="${5:-}"
+    local expected_status="${6:-200}"
     
     print_info "$description"
     
-    local curl_cmd="curl -s"
+    local curl_cmd="curl -s -w '\n%{http_code}'"
     
     if [ "$VERBOSE" = true ]; then
         curl_cmd="$curl_cmd -v"
@@ -80,22 +86,45 @@ run_curl() {
     local start_time=$(date +%s.%N)
     local response=$(eval $curl_cmd)
     local end_time=$(date +%s.%N)
-    local duration=$(echo "$end_time - $start_time" | bc)
+    
+    # Extract HTTP status code (last line)
+    local http_code=$(echo "$response" | tail -n 1)
+    local response_body=$(echo "$response" | sed '$d')
+    
+    # Update test counters
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    if [ "$http_code" -eq "$expected_status" ] || ([ "$expected_status" = "200" ] && [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]); then
+        SUCCESSFUL_TESTS=$((SUCCESSFUL_TESTS + 1))
+        print_success "HTTP Status: $http_code (expected: $expected_status)"
+    else
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        print_error "HTTP Status: $http_code (expected: $expected_status)"
+    fi
+    
+    # Calculate duration if bc is available
+    local duration="N/A"
+    if [ "$BC_AVAILABLE" = true ]; then
+        duration=$(echo "$end_time - $start_time" | bc)
+    fi
     
     # Check if jq is available for formatting
     if command -v jq &> /dev/null; then
-        echo "$response" | jq . 2>/dev/null || echo "$response"
+        echo "$response_body" | jq . 2>/dev/null || echo "$response_body"
     else
-        echo "$response"
+        echo "$response_body"
     fi
     
-    echo -e "${CYAN}Duration: ${duration}s${RESET}\n"
+    if [ "$BC_AVAILABLE" = true ]; then
+        echo -e "${CYAN}Duration: ${duration}s${RESET}\n"
+    else
+        echo -e "${CYAN}Duration: N/A (bc not available)${RESET}\n"
+    fi
     
     # Save response if requested
     if [ "$SAVE_RESPONSES" = true ]; then
         local timestamp=$(date +%Y%m%d_%H%M%S)
         local filename="demo_response_${timestamp}.json"
-        echo "$response" > "$filename"
+        echo "$response_body" > "$filename"
         print_info "Response saved to: $filename"
     fi
 }
@@ -157,8 +186,11 @@ if ! command -v jq &> /dev/null; then
 fi
 
 # Check if bc is available for duration calculation
-if ! command -v bc &> /dev/null; then
-    print_warning "bc is not installed. Duration calculation may not work."
+BC_AVAILABLE=false
+if command -v bc &> /dev/null; then
+    BC_AVAILABLE=true
+else
+    print_warning "bc is not installed. Duration calculation will be skipped."
 fi
 
 print_header "AI Web Scraper API - Curl Collection"
@@ -235,10 +267,18 @@ response1=$(curl -s -X POST "$BASE_URL/api/v1/scrape" \
     -w "\n%{http_code}" \
     -D /tmp/headers1.txt)
 end_time=$(date +%s.%N)
-duration1=$(echo "$end_time - $start_time" | bc)
+if [ "$BC_AVAILABLE" = true ]; then
+    duration1=$(echo "$end_time - $start_time" | bc)
+else
+    duration1="N/A"
+fi
 cache_status1=$(grep -i "X-Cache-Status" /tmp/headers1.txt | cut -d' ' -f2 | tr -d '\r\n' || echo "UNKNOWN")
 print_info "Cache Status: $cache_status1"
-print_info "Duration: ${duration1}s"
+if [ "$BC_AVAILABLE" = true ]; then
+    print_info "Duration: ${duration1}s"
+else
+    print_info "Duration: N/A (bc not available)"
+fi
 echo ""
 
 print_info "Waiting 2 seconds before second request..."
@@ -252,16 +292,29 @@ response2=$(curl -s -X POST "$BASE_URL/api/v1/scrape" \
     -w "\n%{http_code}" \
     -D /tmp/headers2.txt)
 end_time=$(date +%s.%N)
-duration2=$(echo "$end_time - $start_time" | bc)
+if [ "$BC_AVAILABLE" = true ]; then
+    duration2=$(echo "$end_time - $start_time" | bc)
+else
+    duration2="N/A"
+fi
 cache_status2=$(grep -i "X-Cache-Status" /tmp/headers2.txt | cut -d' ' -f2 | tr -d '\r\n' || echo "UNKNOWN")
 print_info "Cache Status: $cache_status2"
-print_info "Duration: ${duration2}s"
-
-if [ "$cache_status2" = "HIT" ] && [ "$(echo "$duration2 < $duration1" | bc)" -eq 1 ]; then
-    speedup=$(echo "scale=2; $duration1 / $duration2" | bc)
-    print_success "Cache working! ${speedup}x faster with cache"
+if [ "$BC_AVAILABLE" = true ]; then
+    print_info "Duration: ${duration2}s"
+    
+    if [ "$cache_status2" = "HIT" ] && [ "$(echo "$duration2 < $duration1" | bc)" -eq 1 ]; then
+        speedup=$(echo "scale=2; $duration1 / $duration2" | bc)
+        print_success "Cache working! ${speedup}x faster with cache"
+    else
+        print_warning "Cache may not be working as expected"
+    fi
 else
-    print_warning "Cache may not be working as expected"
+    print_info "Duration: N/A (bc not available)"
+    if [ "$cache_status2" = "HIT" ]; then
+        print_success "Cache working! (speedup calculation unavailable without bc)"
+    else
+        print_warning "Cache may not be working as expected"
+    fi
 fi
 echo ""
 
@@ -269,18 +322,28 @@ echo ""
 print_header "Error Scenarios"
 
 run_curl "Empty query (validation error)" "POST" "$BASE_URL/api/v1/scrape" \
-    '{"query": ""}'
+    '{"query": ""}' "" "" "400"
 
+# Build long query string safely
+LONG_QUERY=$(python3 -c "print('a' * 1001)")
+# Escape double quotes for JSON
+ESCAPED_QUERY=$(echo "$LONG_QUERY" | sed 's/"/\\"/g')
 run_curl "Query too long (validation error)" "POST" "$BASE_URL/api/v1/scrape" \
-    "{\"query\": \"$(python3 -c 'print("a" * 1001)')\"}"
+    "{\"query\": \"$ESCAPED_QUERY\"}" "" "" "400"
 
 run_curl "Invalid timeout (validation error)" "POST" "$BASE_URL/api/v1/scrape" \
-    '{"query": "Test query", "timeout_seconds": 20}'
+    '{"query": "Test query", "timeout_seconds": 20}' "" "" "400"
 
 # Summary
 print_header "Test Summary"
-print_success "All curl tests completed!"
 print_info "Base URL: $BASE_URL"
+print_info "Total Tests: $TOTAL_TESTS"
+if [ "$SUCCESSFUL_TESTS" -gt 0 ]; then
+    print_success "Successful: $SUCCESSFUL_TESTS"
+fi
+if [ "$FAILED_TESTS" -gt 0 ]; then
+    print_error "Failed: $FAILED_TESTS"
+fi
 if [ "$SAVE_RESPONSES" = true ]; then
     print_info "Responses saved to: demo_response_*.json"
 fi
@@ -288,5 +351,10 @@ fi
 # Cleanup
 rm -f /tmp/headers1.txt /tmp/headers2.txt
 
-exit 0
+# Exit with non-zero status if there were failures
+if [ "$FAILED_TESTS" -gt 0 ]; then
+    exit 1
+else
+    exit 0
+fi
 

@@ -9,17 +9,22 @@ import time
 import sys
 import argparse
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
+
+# Global flag for no-color mode
+NO_COLOR = False
 
 try:
     from colorama import init, Fore, Back, Style
     init(autoreset=True)
     COLORAMA_AVAILABLE = True
+    _Fore = Fore
+    _Style = Style
 except ImportError:
     COLORAMA_AVAILABLE = False
     # Fallback colors for terminals that support ANSI
-    class Fore:
+    class _Fore:
         GREEN = '\033[92m'
         RED = '\033[91m'
         YELLOW = '\033[93m'
@@ -28,9 +33,49 @@ except ImportError:
         MAGENTA = '\033[95m'
         RESET = '\033[0m'
     
-    class Style:
+    class _Style:
         BRIGHT = '\033[1m'
         RESET_ALL = '\033[0m'
+
+# Create Fore and Style that respect NO_COLOR flag
+class Fore:
+    GREEN = ''
+    RED = ''
+    YELLOW = ''
+    CYAN = ''
+    BLUE = ''
+    MAGENTA = ''
+    RESET = ''
+
+class Style:
+    BRIGHT = ''
+    RESET_ALL = ''
+
+def _update_color_classes():
+    """Update Fore and Style classes based on NO_COLOR flag."""
+    global Fore, Style
+    if NO_COLOR:
+        # No-color mode: all attributes are empty strings
+        Fore = type('Fore', (), {
+            'GREEN': '',
+            'RED': '',
+            'YELLOW': '',
+            'CYAN': '',
+            'BLUE': '',
+            'MAGENTA': '',
+            'RESET': ''
+        })
+        Style = type('Style', (), {
+            'BRIGHT': '',
+            'RESET_ALL': ''
+        })
+    else:
+        # Use colorama or fallback
+        Fore = _Fore
+        Style = _Style
+
+# Initialize color classes
+_update_color_classes()
 
 # Default configuration
 DEFAULT_BASE_URL = "http://localhost:8000"
@@ -61,10 +106,42 @@ SAMPLE_QUERIES = {
 # Quick demo query
 QUICK_DEMO_QUERY = "Best AI agents for coding and software development"
 
+# Expected characteristics for demo scenarios
+DEMO_EXPECTATIONS = {
+    "ai_tools": {
+        "expected_category": ["ai_tools"],
+        "expected_response_time_min": 20.0,
+        "expected_response_time_max": 120.0,
+        "expected_cache_hit_second_call": True
+    },
+    "mutual_funds": {
+        "expected_category": ["mutual_funds", "investment"],
+        "expected_response_time_min": 20.0,
+        "expected_response_time_max": 120.0,
+        "expected_cache_hit_second_call": True
+    },
+    "general": {
+        "expected_category": ["general"],
+        "expected_response_time_min": 20.0,
+        "expected_response_time_max": 120.0,
+        "expected_cache_hit_second_call": True
+    },
+    "quick_demo": {
+        "expected_category": ["ai_tools"],
+        "expected_response_time_min": 20.0,
+        "expected_response_time_max": 120.0,
+        "expected_cache_hit_second_call": True
+    }
+}
+
 
 def print_header(text: str):
     """Print a formatted header."""
-    if COLORAMA_AVAILABLE:
+    if NO_COLOR:
+        print(f"\n{'='*70}")
+        print(f"{text.center(70)}")
+        print(f"{'='*70}\n")
+    elif COLORAMA_AVAILABLE:
         print(f"\n{Style.BRIGHT}{Fore.CYAN}{'='*70}")
         print(f"{text.center(70)}")
         print(f"{'='*70}{Style.RESET_ALL}\n")
@@ -76,7 +153,9 @@ def print_header(text: str):
 
 def print_success(text: str):
     """Print success message."""
-    if COLORAMA_AVAILABLE:
+    if NO_COLOR:
+        print(f"✓ {text}")
+    elif COLORAMA_AVAILABLE:
         print(f"{Fore.GREEN}✓ {text}{Style.RESET_ALL}")
     else:
         print(f"{Fore.GREEN}✓ {text}{Fore.RESET}")
@@ -84,7 +163,9 @@ def print_success(text: str):
 
 def print_error(text: str):
     """Print error message."""
-    if COLORAMA_AVAILABLE:
+    if NO_COLOR:
+        print(f"✗ {text}")
+    elif COLORAMA_AVAILABLE:
         print(f"{Fore.RED}✗ {text}{Style.RESET_ALL}")
     else:
         print(f"{Fore.RED}✗ {text}{Fore.RESET}")
@@ -92,7 +173,9 @@ def print_error(text: str):
 
 def print_warning(text: str):
     """Print warning message."""
-    if COLORAMA_AVAILABLE:
+    if NO_COLOR:
+        print(f"⚠ {text}")
+    elif COLORAMA_AVAILABLE:
         print(f"{Fore.YELLOW}⚠ {text}{Style.RESET_ALL}")
     else:
         print(f"{Fore.YELLOW}⚠ {text}{Fore.RESET}")
@@ -100,7 +183,9 @@ def print_warning(text: str):
 
 def print_info(text: str):
     """Print info message."""
-    if COLORAMA_AVAILABLE:
+    if NO_COLOR:
+        print(f"ℹ {text}")
+    elif COLORAMA_AVAILABLE:
         print(f"{Fore.CYAN}ℹ {text}{Style.RESET_ALL}")
     else:
         print(f"{Fore.CYAN}ℹ {text}{Fore.RESET}")
@@ -108,7 +193,12 @@ def print_info(text: str):
 
 def print_stage(stage: str, duration: float = None):
     """Print processing stage."""
-    if COLORAMA_AVAILABLE:
+    if NO_COLOR:
+        stage_text = f"→ {stage}"
+        if duration:
+            stage_text += f" ({duration:.2f}s)"
+        print(stage_text)
+    elif COLORAMA_AVAILABLE:
         stage_text = f"{Fore.BLUE}→ {stage}"
         if duration:
             stage_text += f" {Fore.YELLOW}({duration:.2f}s)"
@@ -132,7 +222,9 @@ def format_response_time(duration: float) -> str:
         color = Fore.RED
         status = "Slow"
     
-    if COLORAMA_AVAILABLE:
+    if NO_COLOR:
+        return f"{duration:.2f}s ({status})"
+    elif COLORAMA_AVAILABLE:
         return f"{color}{duration:.2f}s ({status}){Style.RESET_ALL}"
     else:
         return f"{color}{duration:.2f}s ({status}){Fore.RESET}"
@@ -149,8 +241,9 @@ class DemoSession:
         self.start_time = datetime.now()
         
         if no_color:
-            global COLORAMA_AVAILABLE
-            COLORAMA_AVAILABLE = False
+            global NO_COLOR
+            NO_COLOR = True
+            _update_color_classes()
     
     def log_request(self, query: str, response_data: Dict[str, Any], duration: float):
         """Log a request to session log."""
@@ -191,9 +284,18 @@ class DemoSession:
         query: str,
         timeout: int = DEFAULT_TIMEOUT,
         processing_config: Optional[Dict[str, Any]] = None,
-        store_results: bool = True
+        store_results: bool = True,
+        http_timeout: Optional[float] = None
     ) -> Tuple[Dict[str, Any], float, int]:
-        """Make a scrape request and return response data and duration."""
+        """Make a scrape request and return response data and duration.
+        
+        Args:
+            query: The query string to process
+            timeout: API timeout_seconds value (must be >= 30 if provided, or None to omit)
+            processing_config: Optional processing configuration
+            store_results: Whether to store results in database
+            http_timeout: Optional HTTP client timeout (separate from API timeout_seconds)
+        """
         url = f"{self.base_url}/api/v1/scrape"
         
         headers = {
@@ -205,16 +307,23 @@ class DemoSession:
         
         payload = {
             "query": query,
-            "timeout_seconds": timeout,
             "store_results": store_results
         }
+        
+        # Only include timeout_seconds in payload if it's valid (>= 30) or use default
+        if timeout is not None and timeout >= 30:
+            payload["timeout_seconds"] = timeout
+        # If timeout is None or < 30, omit it from payload (API will use default)
         
         if processing_config:
             payload["processing_config"] = processing_config
         
+        # Use http_timeout for client-side HTTP timeout, or fall back to timeout if provided
+        client_timeout = http_timeout if http_timeout is not None else (timeout if timeout is not None else DEFAULT_TIMEOUT)
+        
         start_time = time.time()
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            response = requests.post(url, json=payload, headers=headers, timeout=client_timeout)
             duration = time.time() - start_time
             
             try:
@@ -229,7 +338,7 @@ class DemoSession:
                 "status": "error",
                 "error": {
                     "code": "TIMEOUT",
-                    "message": f"Request timeout after {timeout} seconds"
+                    "message": f"Request timeout after {client_timeout} seconds (HTTP client timeout)"
                 }
             }, duration, 408
         except Exception as e:
@@ -260,9 +369,15 @@ class DemoSession:
         cache_status = response_data.get("cached", False)
         cache_age = response_data.get("cache_age_seconds", 0)
         if cache_status:
-            print_info(f"Cache: {Fore.GREEN}HIT{Fore.RESET} (age: {cache_age}s)")
+            if NO_COLOR:
+                print_info(f"Cache: HIT (age: {cache_age}s)")
+            else:
+                print_info(f"Cache: {Fore.GREEN}HIT{Fore.RESET} (age: {cache_age}s)")
         else:
-            print_info(f"Cache: {Fore.YELLOW}MISS{Fore.RESET}")
+            if NO_COLOR:
+                print_info(f"Cache: MISS")
+            else:
+                print_info(f"Cache: {Fore.YELLOW}MISS{Fore.RESET}")
         
         if status == "success":
             # Query information
@@ -342,6 +457,51 @@ class DemoSession:
         # Log request
         self.log_request(query, response_data, duration)
     
+    def compare_expected_vs_actual(
+        self,
+        response_data: Dict[str, Any],
+        duration: float,
+        status_code: int,
+        expectations: Dict[str, Any]
+    ):
+        """Compare actual response against expected characteristics."""
+        print_header("Expected vs Actual")
+        
+        # Status comparison
+        expected_status = "success"
+        actual_status = response_data.get("status", "unknown")
+        status_match = actual_status == expected_status and status_code == 200
+        if status_match:
+            print_success(f"Status: Expected '{expected_status}', Got '{actual_status}' ✓")
+        else:
+            print_warning(f"Status: Expected '{expected_status}', Got '{actual_status}'")
+        
+        if actual_status == "success":
+            # Category comparison
+            query_info = response_data.get("query", {})
+            actual_category = query_info.get("category", "unknown")
+            expected_categories = expectations.get("expected_category", [])
+            category_match = actual_category in expected_categories if expected_categories else True
+            if category_match:
+                print_success(f"Category: Expected one of {expected_categories}, Got '{actual_category}' ✓")
+            else:
+                print_warning(f"Category: Expected one of {expected_categories}, Got '{actual_category}'")
+            
+            # Response time comparison
+            expected_time_min = expectations.get("expected_response_time_min", 0.0)
+            expected_time_max = expectations.get("expected_response_time_max", 300.0)
+            time_match = expected_time_min <= duration <= expected_time_max
+            if time_match:
+                print_success(f"Response Time: Expected {expected_time_min}-{expected_time_max}s, Got {duration:.2f}s ✓")
+            else:
+                print_warning(f"Response Time: Expected {expected_time_min}-{expected_time_max}s, Got {duration:.2f}s")
+            
+            # Cache status (if applicable)
+            cache_status = response_data.get("cached", False)
+            if "expected_cache_hit_second_call" in expectations:
+                # This will be checked in cache_demo separately
+                pass
+    
     def quick_demo(self):
         """Run quick demo with pre-selected query."""
         print_header("Quick Demo - AI Tools Query")
@@ -350,6 +510,11 @@ class DemoSession:
         
         response_data, duration, status_code = self.make_request(QUICK_DEMO_QUERY)
         self.display_response(response_data, duration, QUICK_DEMO_QUERY)
+        
+        # Compare expected vs actual
+        expectations = DEMO_EXPECTATIONS.get("quick_demo", {})
+        self.compare_expected_vs_actual(response_data, duration, status_code, expectations)
+        print()
         
         if status_code == 200:
             print_success("Quick demo completed successfully!")
@@ -371,6 +536,11 @@ class DemoSession:
         
         response_data, duration, status_code = self.make_request(query)
         self.display_response(response_data, duration, query)
+        
+        # Compare expected vs actual
+        expectations = DEMO_EXPECTATIONS.get(category, {})
+        self.compare_expected_vs_actual(response_data, duration, status_code, expectations)
+        print()
         
         if status_code == 200:
             print_success(f"Category demo ({category}) completed successfully!")
@@ -409,11 +579,26 @@ class DemoSession:
             print_info(f"Cache Age: {cache_age}s")
             print_info(f"Duration: {duration2:.2f}s")
             
-            if cache_status2 and duration2 < duration1:
-                speedup = duration1 / duration2 if duration2 > 0 else 0
-                print_success(f"Cache working! {speedup:.1f}x faster with cache")
+            # Expected vs Actual comparison for cache demo
+            print_header("Expected vs Actual - Cache Demo")
+            expected_first_cache = False  # First call should be MISS
+            if cache_status1 == expected_first_cache:
+                print_success(f"First Request Cache: Expected MISS, Got {'HIT' if cache_status1 else 'MISS'} ✓")
             else:
-                print_warning("Cache may not be working as expected")
+                print_warning(f"First Request Cache: Expected MISS, Got {'HIT' if cache_status1 else 'MISS'}")
+            
+            expected_second_cache = True  # Second call should be HIT
+            if cache_status2 == expected_second_cache:
+                print_success(f"Second Request Cache: Expected HIT, Got {'HIT' if cache_status2 else 'MISS'} ✓")
+            else:
+                print_warning(f"Second Request Cache: Expected HIT, Got {'HIT' if cache_status2 else 'MISS'}")
+            
+            # Response time comparison
+            if duration2 < duration1:
+                speedup = duration1 / duration2 if duration2 > 0 else 0
+                print_success(f"Performance: Cache working! {speedup:.1f}x faster with cache ✓")
+            else:
+                print_warning(f"Performance: Cache may not be working as expected (duration2: {duration2:.2f}s >= duration1: {duration1:.2f}s)")
     
     def custom_query_demo(self, query: str):
         """Run demo with custom query."""
@@ -520,14 +705,15 @@ class DemoSession:
             print_warning(f"Unexpected status code: {status_code}")
         print()
         
-        # Very short timeout
-        print_info("Testing short timeout (expected: timeout error)...")
+        # Client-side timeout (HTTP timeout triggers, but API timeout_seconds is valid)
+        print_info("Testing client-side HTTP timeout (expected: timeout error)...")
         response_data, duration, status_code = self.make_request(
             "Test query",
-            timeout=1
+            timeout=180,  # Valid API timeout_seconds (>= 30)
+            http_timeout=0.1  # Very small HTTP client timeout to trigger client-side timeout
         )
-        if status_code in [408, 500]:
-            print_success("Timeout handled correctly")
+        if status_code == 408:
+            print_success("Timeout handled correctly (client-side timeout)")
         else:
             print_warning(f"Unexpected status code: {status_code}")
     

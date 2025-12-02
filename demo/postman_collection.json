@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "ai-web-scraper-demo",
 		"name": "AI Web Scraper API - Demo Collection",
-		"description": "Complete API reference with example requests and responses for the AI Web Scraper API",
+		"description": "Complete API reference with example requests and responses for the AI Web Scraper API\n\nNOTE: Example responses in this collection are placeholders. To get real example responses:\n1. Start the API server\n2. Send each request in Postman\n3. Save the response as an example (right-click response → Save Response → Save as example)\n4. Re-export the collection",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -11,6 +11,29 @@
 			"item": [
 				{
 					"name": "Overall Health",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has status field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('status');",
+									"});",
+									"",
+									"pm.test('Response has components', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('components');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "GET",
 						"header": [],
@@ -73,6 +96,42 @@
 			"item": [
 				{
 					"name": "AI Tools Query",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has status field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('status');",
+									"});",
+									"",
+									"pm.test('Response has query field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('query');",
+									"});",
+									"",
+									"pm.test('Response has results field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('results');",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.test('Success response has expected structure', function () {",
+									"        pm.expect(jsonData.status).to.equal('success');",
+									"        pm.expect(jsonData).to.have.property('execution_metadata');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [
@@ -100,10 +159,43 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "scrape"]
 						},
-						"description": "Example query for AI tools category. Expected response time: 30-90 seconds."
-					},
-					"response": []
+					"description": "Example query for AI tools category. Expected response time: 30-90 seconds."
 				},
+				"response": [
+					{
+						"name": "Success Response - AI Tools Query",
+						"originalRequest": {
+							"method": "POST",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": {
+								"mode": "raw",
+								"raw": "{\n  \"query\": \"Best AI agents for coding and software development\",\n  \"timeout_seconds\": 180,\n  \"store_results\": true\n}"
+							},
+							"url": {
+								"raw": "{{base_url}}/api/v1/scrape",
+								"host": ["{{base_url}}"],
+								"path": ["api", "v1", "scrape"]
+							}
+						},
+						"status": "OK",
+						"code": 200,
+						"_postman_previewlanguage": "json",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"cookie": [],
+						"body": "{\n  \"status\": \"success\",\n  \"timestamp\": \"2024-01-01T12:00:00Z\",\n  \"request_id\": \"req_12345\",\n  \"query\": {\n    \"text\": \"Best AI agents for coding and software development\",\n    \"category\": \"ai_tools\",\n    \"confidence_score\": 0.95\n  },\n  \"results\": {\n    \"total_items\": 12,\n    \"processed_items\": 10,\n    \"success_rate\": 0.83,\n    \"processed_contents\": []\n  },\n  \"analytics\": {\n    \"pages_scraped\": 15,\n    \"processing_time_breakdown\": {},\n    \"quality_metrics\": {}\n  },\n  \"execution_metadata\": {\n    \"execution_time_ms\": 45230.5,\n    \"stages_timing\": {}\n  },\n  \"cached\": false,\n  \"cache_age_seconds\": 0\n}"
+					}
+				]
+			},
 				{
 					"name": "Mutual Funds Query",
 					"request": {
@@ -128,10 +220,43 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "scrape"]
 						},
-						"description": "Example query for mutual funds/investment category"
-					},
-					"response": []
+					"description": "Example query for mutual funds/investment category"
 				},
+				"response": [
+					{
+						"name": "Success Response - Mutual Funds Query",
+						"originalRequest": {
+							"method": "POST",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": {
+								"mode": "raw",
+								"raw": "{\n  \"query\": \"Best mutual funds for beginners with low risk\",\n  \"timeout_seconds\": 180,\n  \"store_results\": true\n}"
+							},
+							"url": {
+								"raw": "{{base_url}}/api/v1/scrape",
+								"host": ["{{base_url}}"],
+								"path": ["api", "v1", "scrape"]
+							}
+						},
+						"status": "OK",
+						"code": 200,
+						"_postman_previewlanguage": "json",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"cookie": [],
+						"body": "{\n  \"status\": \"success\",\n  \"timestamp\": \"2024-01-01T12:00:00Z\",\n  \"request_id\": \"req_67890\",\n  \"query\": {\n    \"text\": \"Best mutual funds for beginners with low risk\",\n    \"category\": \"mutual_funds\",\n    \"confidence_score\": 0.92\n  },\n  \"results\": {\n    \"total_items\": 10,\n    \"processed_items\": 8,\n    \"success_rate\": 0.80,\n    \"processed_contents\": []\n  },\n  \"analytics\": {\n    \"pages_scraped\": 12,\n    \"processing_time_breakdown\": {},\n    \"quality_metrics\": {}\n  },\n  \"execution_metadata\": {\n    \"execution_time_ms\": 38500.0,\n    \"stages_timing\": {}\n  },\n  \"cached\": false,\n  \"cache_age_seconds\": 0\n}"
+					}
+				]
+			},
 				{
 					"name": "General Query",
 					"request": {
@@ -156,10 +281,43 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "scrape"]
 						},
-						"description": "Example general query for technology trends"
-					},
-					"response": []
+					"description": "Example general query for technology trends"
 				},
+				"response": [
+					{
+						"name": "Success Response - General Query",
+						"originalRequest": {
+							"method": "POST",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": {
+								"mode": "raw",
+								"raw": "{\n  \"query\": \"Latest trends in artificial intelligence\",\n  \"timeout_seconds\": 180,\n  \"store_results\": true\n}"
+							},
+							"url": {
+								"raw": "{{base_url}}/api/v1/scrape",
+								"host": ["{{base_url}}"],
+								"path": ["api", "v1", "scrape"]
+							}
+						},
+						"status": "OK",
+						"code": 200,
+						"_postman_previewlanguage": "json",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"cookie": [],
+						"body": "{\n  \"status\": \"success\",\n  \"timestamp\": \"2024-01-01T12:00:00Z\",\n  \"request_id\": \"req_abc123\",\n  \"query\": {\n    \"text\": \"Latest trends in artificial intelligence\",\n    \"category\": \"general\",\n    \"confidence_score\": 0.88\n  },\n  \"results\": {\n    \"total_items\": 15,\n    \"processed_items\": 12,\n    \"success_rate\": 0.80,\n    \"processed_contents\": []\n  },\n  \"analytics\": {\n    \"pages_scraped\": 18,\n    \"processing_time_breakdown\": {},\n    \"quality_metrics\": {}\n  },\n  \"execution_metadata\": {\n    \"execution_time_ms\": 52100.0,\n    \"stages_timing\": {}\n  },\n  \"cached\": false,\n  \"cache_age_seconds\": 0\n}"
+					}
+				]
+			},
 				{
 					"name": "With Custom Config",
 					"request": {
@@ -184,10 +342,43 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "scrape"]
 						},
-						"description": "Query with custom processing configuration overrides"
-					},
-					"response": []
+					"description": "Query with custom processing configuration overrides"
 				},
+				"response": [
+					{
+						"name": "Success Response - Custom Config",
+						"originalRequest": {
+							"method": "POST",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": {
+								"mode": "raw",
+								"raw": "{\n  \"query\": \"AI tools for image generation\",\n  \"processing_config\": {\n    \"enable_ai_analysis\": true,\n    \"enable_summarization\": true,\n    \"max_summary_length\": 300,\n    \"enable_duplicate_detection\": true\n  },\n  \"timeout_seconds\": 180,\n  \"store_results\": true\n}"
+							},
+							"url": {
+								"raw": "{{base_url}}/api/v1/scrape",
+								"host": ["{{base_url}}"],
+								"path": ["api", "v1", "scrape"]
+							}
+						},
+						"status": "OK",
+						"code": 200,
+						"_postman_previewlanguage": "json",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"cookie": [],
+						"body": "{\n  \"status\": \"success\",\n  \"timestamp\": \"2024-01-01T12:00:00Z\",\n  \"request_id\": \"req_config123\",\n  \"query\": {\n    \"text\": \"AI tools for image generation\",\n    \"category\": \"ai_tools\",\n    \"confidence_score\": 0.93\n  },\n  \"results\": {\n    \"total_items\": 14,\n    \"processed_items\": 11,\n    \"success_rate\": 0.79,\n    \"processed_contents\": []\n  },\n  \"analytics\": {\n    \"pages_scraped\": 16,\n    \"processing_time_breakdown\": {},\n    \"quality_metrics\": {}\n  },\n  \"execution_metadata\": {\n    \"execution_time_ms\": 48900.0,\n    \"stages_timing\": {}\n  },\n  \"cached\": false,\n  \"cache_age_seconds\": 0\n}"
+					}
+				]
+			},
 				{
 					"name": "With Custom Timeout",
 					"request": {
@@ -358,6 +549,24 @@
 			"item": [
 				{
 					"name": "Empty Query",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 400 for validation error', function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test('Response has error field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [
@@ -380,12 +589,58 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "scrape"]
 						},
-						"description": "Test validation error with empty query (expected: 400)"
-					},
-					"response": []
+					"description": "Test validation error with empty query (expected: 400)"
 				},
+				"response": [
+					{
+						"name": "Validation Error - Empty Query",
+						"originalRequest": {
+							"method": "POST",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": {
+								"mode": "raw",
+								"raw": "{\n  \"query\": \"\"\n}"
+							},
+							"url": {
+								"raw": "{{base_url}}/api/v1/scrape",
+								"host": ["{{base_url}}"],
+								"path": ["api", "v1", "scrape"]
+							}
+						},
+						"status": "Bad Request",
+						"code": 400,
+						"_postman_previewlanguage": "json",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"cookie": [],
+						"body": "{\n  \"status\": \"error\",\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Request validation failed\",\n    \"details\": [\n      {\n        \"error_code\": \"VALIDATION_ERROR\",\n        \"message\": \"Query text cannot be empty\",\n        \"context\": {\n          \"field\": \"query\"\n        },\n        \"recovery_suggestions\": [\n          \"Provide a non-empty query string\",\n          \"Ensure query text is between 1 and 1000 characters\"\n        ]\n      }\n    ]\n  },\n  \"request_id\": \"req_error123\",\n  \"execution_metadata\": {\n    \"execution_time_ms\": 5.2,\n    \"start_time\": \"2024-01-01T12:00:00Z\",\n    \"end_time\": \"2024-01-01T12:00:00.005Z\",\n    \"stages_timing\": {}\n  }\n}"
+					}
+				]
+			},
 				{
 					"name": "Query Too Long",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Generate a 1001-character string",
+									"const longQuery = 'a'.repeat(1001);",
+									"pm.variables.set('long_query', longQuery);"
+								]
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [
@@ -396,7 +651,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"query\": \"a\".repeat(1001)\n}",
+							"raw": "{\n  \"query\": \"{{long_query}}\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -436,10 +691,43 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "scrape"]
 						},
-						"description": "Test validation error with timeout < 30 seconds (expected: 400)"
-					},
-					"response": []
+					"description": "Test business-rule validation error with timeout < 30 seconds (expected: 400 with VALIDATION_ERROR)"
 				},
+				"response": [
+					{
+						"name": "Validation Error - Invalid Timeout",
+						"originalRequest": {
+							"method": "POST",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": {
+								"mode": "raw",
+								"raw": "{\n  \"query\": \"Test query\",\n  \"timeout_seconds\": 20\n}"
+							},
+							"url": {
+								"raw": "{{base_url}}/api/v1/scrape",
+								"host": ["{{base_url}}"],
+								"path": ["api", "v1", "scrape"]
+							}
+						},
+						"status": "Bad Request",
+						"code": 400,
+						"_postman_previewlanguage": "json",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"cookie": [],
+						"body": "{\n  \"status\": \"error\",\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Request validation failed\",\n    \"details\": [\n      {\n        \"error_code\": \"VALIDATION_ERROR\",\n        \"message\": \"timeout_seconds must be at least 30 seconds, got 20\",\n        \"context\": {\n          \"field\": \"timeout_seconds\"\n        },\n        \"recovery_suggestions\": [\n          \"Set timeout_seconds to at least 30 seconds\",\n          \"Use a value between 30 and 600 seconds\"\n        ]\n      }\n    ]\n  },\n  \"request_id\": \"req_timeout_error\",\n  \"execution_metadata\": {\n    \"execution_time_ms\": 3.1,\n    \"start_time\": \"2024-01-01T12:00:00Z\",\n    \"end_time\": \"2024-01-01T12:00:00.003Z\",\n    \"stages_timing\": {}\n  }\n}"
+					}
+				]
+			},
 				{
 					"name": "Invalid Config",
 					"request": {
