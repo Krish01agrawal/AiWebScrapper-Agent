@@ -48,9 +48,11 @@ class SiteDiscoveryAgent(BaseScraperAgent):
                 "g2.com", "capterra.com", "techcrunch.com", "venturebeat.com"
             ] + scraper_friendly_sites,
             "mutual_funds": [
-                "morningstar.com", "vanguard.com", "fidelity.com", "schwab.com",
-                "tdameritrade.com", "etrade.com", "yahoo.com/finance", "marketwatch.com"
-            ] + scraper_friendly_sites,
+                "morningstar.com", "vanguard.com", "investor.vanguard.com", "fidelity.com", 
+                "schwab.com", "tdameritrade.com", "etrade.com", "yahoo.com/finance", 
+                "marketwatch.com", "investopedia.com", "nerdwallet.com", "bankrate.com",
+                "thebalance.com", "forbes.com/investing", "bloomberg.com", "reuters.com/finance"
+            ],
             "general": [
                 "wikipedia.org", "reddit.com", "stackoverflow.com", "quora.com",
                 "medium.com", "dev.to", "hashnode.dev", "substack.com"
@@ -162,19 +164,53 @@ class SiteDiscoveryAgent(BaseScraperAgent):
             QueryCategory.GENERAL: "general information and resources"
         }.get(category, "general information")
         
+        # Add specific instructions based on category
+        if category == QueryCategory.MUTUAL_FUNDS:
+            specific_instructions = """
+            CRITICAL: For mutual fund queries, prioritize these types of sites:
+            - Financial services companies (Vanguard, Fidelity, Schwab, etc.)
+            - Investment research platforms (Morningstar, Investopedia, etc.)
+            - Financial news sites (MarketWatch, Yahoo Finance, etc.)
+            - Brokerage platforms (TD Ameritrade, E*TRADE, etc.)
+            DO NOT include general knowledge sites like Wikipedia, developer communities, or test APIs.
+            """
+        elif category == QueryCategory.AI_TOOLS:
+            specific_instructions = """
+            CRITICAL: For AI tools queries, prioritize:
+            - Product directories (ProductHunt, AlternativeTo, etc.)
+            - Tech news sites (TechCrunch, VentureBeat, etc.)
+            - GitHub repositories and developer tools
+            - AI platform websites
+            DO NOT include general knowledge sites or unrelated content.
+            """
+        else:
+            specific_instructions = """
+            Focus on authoritative sources relevant to the specific query topic.
+            Avoid generic sites like Wikipedia homepage, developer communities, or test APIs unless they directly answer the query.
+            """
+        
         prompt = f"""
         You are a web research assistant. Find relevant websites for the following query about {category_description}.
         
         Query: "{query_text}"
         
+        {specific_instructions}
+        
         Please provide a JSON response with an array of websites. For each website, include:
-        - url: The website URL
+        - url: The website URL (must be a real, accessible URL)
         - title: Website title or name
         - description: Brief description of what the site offers
-        - relevance_score: Score from 0.0 to 1.0 indicating relevance to the query
-        - category: The type of website (e.g., "tool", "platform", "news", "documentation")
+        - relevance_score: Score from 0.0 to 1.0 indicating relevance to the query (be strict - only high relevance sites should score >0.7)
+        - category: The type of website (e.g., "tool", "platform", "news", "documentation", "financial_service")
         
-        Focus on authoritative, reliable sources. Return only the JSON array, no additional text.
+        IMPORTANT RULES:
+        1. Only include sites that DIRECTLY relate to the query topic
+        2. Prioritize authoritative, reliable sources
+        3. Exclude donation pages, generic homepages, or irrelevant content
+        4. For financial queries, prioritize financial services and investment sites
+        5. Return 5-10 highly relevant sites, not generic ones
+        
+        Return only the JSON array, no additional text.
         
         Example format:
         [

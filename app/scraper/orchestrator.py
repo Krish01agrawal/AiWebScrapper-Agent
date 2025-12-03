@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
 
 from app.agents.base import BaseAgent
-from app.agents.schemas import ParsedQuery
+from app.agents.schemas import ParsedQuery, QueryCategory
 from app.scraper.discovery import SiteDiscoveryAgent
 from app.scraper.extractor import ContentExtractorAgent
 from app.scraper.schemas import ScrapedContent, DiscoveryResult, ScrapingError
@@ -221,15 +221,85 @@ class ScraperOrchestrator(BaseAgent):
         if not scraped_contents:
             return []
         
-        # Remove duplicates based on content similarity
-        deduplicated = self._deduplicate_content(scraped_contents)
+        # Step 1: Early filtering - remove obviously irrelevant content
+        relevant_contents = self._filter_irrelevant_content(scraped_contents, parsed_query)
         
-        # Rank by quality and relevance
+        if not relevant_contents:
+            logger.warning("All content filtered out as irrelevant")
+            return []
+        
+        # Step 2: Remove duplicates based on content similarity
+        deduplicated = self._deduplicate_content(relevant_contents)
+        
+        # Step 3: Rank by quality and relevance
         ranked = self._rank_content(deduplicated, parsed_query)
         
-        # Apply final filtering
+        # Step 4: Apply final filtering
         filtered = self._filter_results(ranked, parsed_query)
         
+        return filtered
+    
+    def _filter_irrelevant_content(self, scraped_contents: List[ScrapedContent], parsed_query: ParsedQuery) -> List[ScrapedContent]:
+        """Filter out obviously irrelevant content before processing."""
+        from app.agents.schemas import QueryCategory
+        
+        query_text = parsed_query.base_result.query_text.lower()
+        category = parsed_query.base_result.category
+        
+        # Keywords that indicate irrelevant content
+        irrelevant_indicators = [
+            "donation", "donate", "fundraising", "support us", "please give",
+            "loading...", "test api", "fake data", "jsonplaceholder",
+            "developer community", "software development", "programming"
+        ]
+        
+        # Keywords that indicate relevant content for mutual funds
+        if category == QueryCategory.MUTUAL_FUNDS:
+            relevant_indicators = [
+                "mutual fund", "investment", "finance", "portfolio", "expense ratio",
+                "vanguard", "fidelity", "schwab", "morningstar", "investopedia",
+                "fund", "etf", "index", "diversification", "risk", "return"
+            ]
+        else:
+            relevant_indicators = []
+        
+        filtered = []
+        for content in scraped_contents:
+            # Check URL
+            url_lower = str(content.url).lower()
+            if any(indicator in url_lower for indicator in ["donate", "fundraising", "jsonplaceholder"]):
+                logger.debug(f"Filtering out irrelevant URL: {content.url}")
+                continue
+            
+            # Check title
+            title_lower = (content.title or "").lower()
+            if any(indicator in title_lower for indicator in irrelevant_indicators):
+                # But allow if it also has relevant indicators
+                if not any(indicator in title_lower for indicator in relevant_indicators):
+                    logger.debug(f"Filtering out content with irrelevant title: {content.title}")
+                    continue
+            
+            # Check content preview (first 500 chars)
+            content_preview = (content.content or "")[:500].lower()
+            
+            # For mutual fund queries, check if content is about mutual funds
+            if category == QueryCategory.MUTUAL_FUNDS:
+                if not any(indicator in content_preview for indicator in relevant_indicators):
+                    # Check if it's clearly irrelevant
+                    if any(indicator in content_preview for indicator in irrelevant_indicators):
+                        logger.debug(f"Filtering out irrelevant content from: {content.url}")
+                        continue
+            
+            # Check description
+            desc_lower = (content.description or "").lower()
+            if any(indicator in desc_lower for indicator in irrelevant_indicators):
+                if category == QueryCategory.MUTUAL_FUNDS and not any(indicator in desc_lower for indicator in relevant_indicators):
+                    logger.debug(f"Filtering out content with irrelevant description: {content.url}")
+                    continue
+            
+            filtered.append(content)
+        
+        logger.info(f"Filtered {len(scraped_contents)} -> {len(filtered)} relevant content items")
         return filtered
     
     def _deduplicate_content(self, scraped_contents: List[ScrapedContent]) -> List[ScrapedContent]:

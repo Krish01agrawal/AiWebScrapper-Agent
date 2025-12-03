@@ -134,6 +134,7 @@ class ScrapeResponse(BaseModel):
     
     # Main response data
     query: Dict[str, Any] = Field(..., description="Query information and categorization")
+    answer: Optional[Dict[str, Any]] = Field(None, description="Direct answer to the query with recommendations and key findings")
     results: Dict[str, Any] = Field(..., description="Processed results and content")
     
     # Analytics and metrics
@@ -487,6 +488,7 @@ async def scrape_content(
                 "category": workflow_result.get("query", {}).get("category", "unknown"),
                 "confidence_score": workflow_result.get("query", {}).get("confidence_score", 0.0)
             },
+            answer=processed_results.get("answer", None),  # NEW: Direct answer section
             results=processed_results.get("results", {}),
             analytics=analytics,
             execution_metadata=execution_metadata,

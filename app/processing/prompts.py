@@ -647,24 +647,36 @@ class ProcessingPrompts:
     """
     
     CONTENT_ANALYSIS_MUTUAL_FUNDS = """
-    Analyze this mutual fund content focusing on performance metrics, fees, risk ratings, and investment strategy.
+    Analyze this mutual fund content focusing on performance metrics, fees, risk ratings, and investment strategy. The user's query is: "{query}"
 
     Content:
     {content}
+    
+    CRITICAL: If the query asks for specific fund recommendations (e.g., "best mutual funds for beginners", "name best funds"), you MUST:
+    1. Identify ALL specific fund names mentioned with their ticker symbols
+    2. Extract key details for each fund (expense ratio, minimum investment, risk level, performance)
+    3. Provide SPECIFIC recommendations in the "recommendations" field, not generic advice
+    4. Include fund names and why they're recommended in the "key_entities" field
     
     Provide analysis in JSON format, wrapped in fenced JSON blocks:
 
 ```json
 {{
-        "themes": ["Investment Strategy", "Performance Metrics", "Risk Assessment"],
+        "themes": ["Investment Strategy", "Performance Metrics", "Risk Assessment", "Fund Recommendations"],
         "quality_metrics": {{
             "data_completeness": 0.8,
             "performance_analysis": 0.9,
-            "risk_disclosure": 0.7
+            "risk_disclosure": 0.7,
+            "specificity": 0.9
         }},
         "recommendations": [
-            "Consider risk tolerance before investing",
-            "Compare expense ratios with similar funds"
+            "Vanguard 500 Index Fund (VFIAX): 0.04% expense ratio, $3,000 minimum, suitable for beginners seeking low-cost diversification",
+            "Fidelity 500 Index Fund (FXAIX): 0.015% expense ratio, no minimum, ideal for cost-conscious beginners"
+        ],
+        "key_entities": [
+            "Vanguard 500 Index Fund (VFIAX)",
+            "Fidelity 500 Index Fund (FXAIX)",
+            "Vanguard Total Bond Market Index Fund (VBTLX)"
         ],
         "credibility_indicators": {{
             "data_source": "reliable",
@@ -675,6 +687,8 @@ class ProcessingPrompts:
         "source_reliability": 0.9
     }}
 ```
+
+    IMPORTANT: The "recommendations" field should contain SPECIFIC fund recommendations with details when available, not generic advice. If specific funds are mentioned that match the query, list them with their key characteristics.
     """
     
     # Summarization Prompts
@@ -687,17 +701,23 @@ class ProcessingPrompts:
     Content:
     {content}
     
+    CRITICAL INSTRUCTIONS:
+    - If the query asks for specific recommendations (e.g., "best mutual funds", "name the best tools"), the executive summary MUST directly answer the query by listing specific names/recommendations
+    - If the query asks "Name best X", include the actual names in the executive summary and key points
+    - Key points should include specific recommendations, product names, or actionable items mentioned in the content
+    - Do not provide generic summaries - provide direct answers to the query when specific information is available
+    
     Please provide a summary in the following JSON format, wrapped in fenced JSON blocks:
 
 ```json
 {{
-        "executive_summary": "1-2 sentence executive summary (max 200 chars)",
+        "executive_summary": "Direct answer to the query. If query asks for specific names/recommendations, list them here (e.g., 'The best mutual funds for beginners are: Vanguard 500 Index Fund (VFIAX), Fidelity 500 Index Fund (FXAIX)...') (max 300 chars)",
         "key_points": [
-            "Key point 1 (max 100 chars)",
-            "Key point 2 (max 100 chars)",
-            "Key point 3 (max 100 chars)"
+            "Specific recommendation 1 with details (e.g., 'Vanguard 500 Index Fund (VFIAX): 0.04% expense ratio, $3,000 minimum')",
+            "Specific recommendation 2 with details",
+            "Key point 3 (max 150 chars)"
         ],
-        "detailed_summary": "Detailed paragraph summary (max {max_length} chars)",
+        "detailed_summary": "Detailed paragraph summary that directly addresses the query. Include specific names, numbers, and actionable information when available (max {max_length} chars)",
         "main_topics": ["topic1", "topic2", "topic3"],
         "sentiment": "positive|negative|neutral",
         "confidence_score": 0.95
@@ -705,12 +725,14 @@ class ProcessingPrompts:
 ```
     
     Guidelines:
-    - Executive summary should capture the essence in 1-2 sentences
-    - Key points should be actionable and specific to the query
-    - Detailed summary should cover main arguments and findings
+    - Executive summary should DIRECTLY ANSWER the query, not just describe the content
+    - If the query asks "Name best X", the executive summary should list actual names
+    - Key points should include specific recommendations with details (names, prices, features, etc.)
+    - Detailed summary should provide comprehensive information that answers the query
     - Focus on information most relevant to "{query}"
     - Maintain factual accuracy and avoid speculation
     - Use clear, concise language
+    - Prioritize actionable, specific information over generic descriptions
     """
     
     SUMMARIZATION_EXECUTIVE = """
@@ -873,18 +895,20 @@ class ProcessingPrompts:
     """
     
     EXTRACTION_MUTUAL_FUNDS = """
-    Extract structured data specifically for mutual funds and investment products.
+    Extract structured data specifically for mutual funds and investment products. The user's query is: "{query}"
 
     Content:
     {content}
     
-    Focus on extracting:
-    - Fund names and companies
-    - Performance metrics
-    - Expense ratios and fees
-    - Risk ratings and categories
-    - Investment strategy
-    - Minimum investments
+    CRITICAL: If the query asks for specific fund recommendations (e.g., "best mutual funds for beginners", "low risk funds"), you MUST extract:
+    - SPECIFIC FUND NAMES with their ticker symbols (e.g., "Vanguard 500 Index Fund (VFIAX)")
+    - Expense ratios (e.g., "0.04%")
+    - Minimum investment amounts (e.g., "$3,000")
+    - Risk levels (e.g., "low", "moderate", "high")
+    - Performance metrics (e.g., "8.19% annual return")
+    - Why each fund is recommended (e.g., "suitable for beginners", "low cost", "diversified")
+    
+    For each fund mentioned, extract ALL available details. Prioritize funds that match the query criteria (e.g., "beginners", "low risk").
     
     Provide extraction in JSON format, wrapped in fenced JSON blocks:
 
@@ -892,16 +916,33 @@ class ProcessingPrompts:
 {{
         "entities": [
             {{
-                "type": "mutual_fund|fund_company|fund_manager",
-                "name": "fund/company name",
+                "type": "mutual_fund",
+                "name": "Full Fund Name (Ticker Symbol)",
                 "properties": {{
-                    "category": "fund category",
+                    "ticker": "TICKER",
+                    "category": "fund category (e.g., Index Fund, Target Date Fund)",
                     "strategy": "investment strategy",
-                    "risk_level": "risk rating"
+                    "risk_level": "low|moderate|high",
+                    "suitable_for": "who this fund is for (e.g., beginners, retirement)",
+                    "expense_ratio": "0.XX%",
+                    "minimum_investment": "$X,XXX",
+                    "performance_annual": "X.XX%",
+                    "why_recommended": "specific reason this fund matches the query",
+                    "relevance": 0.95
                 }}
             }}
         ],
         "key_value_pairs": {{
+            "recommended_funds": [
+                {{
+                    "name": "Fund Name",
+                    "ticker": "TICKER",
+                    "expense_ratio": "0.XX%",
+                    "minimum_investment": "$X,XXX",
+                    "risk_level": "low|moderate|high",
+                    "why_recommended": "specific reason"
+                }}
+            ],
             "expense_ratio": "expense ratio percentage",
             "minimum_investment": "minimum amount",
             "performance_1yr": "1-year return"
@@ -909,10 +950,13 @@ class ProcessingPrompts:
         "categories": ["Mutual Funds", "Investment Products", "Retirement Planning"],
         "confidence_scores": {{
             "expense_ratio": 0.95,
-            "performance": 0.9
+            "performance": 0.9,
+            "fund_recommendations": 0.9
         }}
     }}
 ```
+
+    IMPORTANT: If the content contains specific fund recommendations that match the query, extract them as separate entities with full details. Do not just extract generic concepts - extract actual fund names, tickers, and actionable information.
     """
     
     # Duplicate Detection Prompts

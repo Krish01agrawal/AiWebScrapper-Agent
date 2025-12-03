@@ -79,11 +79,255 @@ def format_error_response(
     return response
 
 
+def synthesize_answer_from_content(
+    processed_contents: List[ProcessedContent],
+    query_text: str
+) -> Dict[str, Any]:
+    """
+    Synthesize a direct answer to the query from processed content.
+    This creates a top-level answer section that directly addresses the user's query.
+    
+    Args:
+        processed_contents: List of processed content items
+        query_text: Original query text
+        
+    Returns:
+        Dictionary with synthesized answer, recommendations, and key information
+    """
+    answer = {
+        "direct_answer": "",
+        "recommendations": [],
+        "key_findings": [],
+        "sources": [],
+        "confidence": 0.0
+    }
+    
+    if not processed_contents:
+        answer["direct_answer"] = "No relevant content found to answer your query."
+        return answer
+    
+    # Extract recommendations and specific answers from processed content
+    all_recommendations = []
+    all_key_findings = []
+    sources = []
+    confidence_scores = []
+    
+    # Sort by relevance score (highest first)
+    def get_relevance_score(content):
+        try:
+            if content.ai_insights and hasattr(content.ai_insights, 'relevance_score'):
+                return content.ai_insights.relevance_score
+            return 0.0
+        except Exception:
+            return 0.0
+    
+    sorted_contents = sorted(
+        processed_contents,
+        key=lambda x: (
+            get_relevance_score(x),
+            x.enhanced_quality_score if hasattr(x, 'enhanced_quality_score') else 0.0
+        ),
+        reverse=True
+    )
+    
+    # Extract from top 5 most relevant items
+    for content in sorted_contents[:5]:
+        try:
+            # Get source URL
+            source_url = str(content.original_content.url) if hasattr(content.original_content, 'url') else ""
+            if source_url and source_url not in sources:
+                sources.append(source_url)
+            
+            # Extract from summary
+            if content.summary:
+                # Use executive summary as direct answer if it contains specific recommendations
+                exec_summary = content.summary.executive_summary
+                if exec_summary and len(exec_summary) > 20:
+                    # Check if it contains specific names/recommendations
+                    if any(keyword in exec_summary.lower() for keyword in ['fund', 'ticker', 'vfiax', 'fxai', 'recommend', 'best']):
+                        if not answer["direct_answer"] or len(exec_summary) > len(answer["direct_answer"]):
+                            answer["direct_answer"] = exec_summary
+                
+                # Extract key points as recommendations
+                if content.summary.key_points:
+                    for point in content.summary.key_points:
+                        if point and len(point) > 10:
+                            # Check if it's a specific recommendation (contains names, numbers, etc.)
+                            if any(char.isdigit() for char in point) or any(keyword in point.lower() for keyword in ['fund', 'ticker', 'expense', 'minimum', '%']):
+                                if point not in all_recommendations:
+                                    all_recommendations.append(point)
+                            else:
+                                if point not in all_key_findings:
+                                    all_key_findings.append(point)
+            
+            # Extract from structured data (entities and key-value pairs)
+            if content.structured_data:
+                # Extract fund/product recommendations from entities
+                for entity in content.structured_data.entities:
+                    if isinstance(entity, dict):
+                        entity_name = entity.get("name", "")
+                        entity_type = entity.get("type", "")
+                        properties = entity.get("properties", {})
+                        
+                        # If it's a product/fund recommendation
+                        if entity_type in ["mutual_fund", "product", "ai_tool"] and entity_name:
+                            recommendation_text = entity_name
+                            
+                            # Add key properties
+                            if isinstance(properties, dict):
+                                details = []
+                                if "ticker" in properties:
+                                    details.append(f"({properties['ticker']})")
+                                if "expense_ratio" in properties:
+                                    details.append(f"Expense: {properties['expense_ratio']}")
+                                if "minimum_investment" in properties:
+                                    details.append(f"Min: {properties['minimum_investment']}")
+                                if "risk_level" in properties:
+                                    details.append(f"Risk: {properties['risk_level']}")
+                                
+                                if details:
+                                    recommendation_text += " - " + ", ".join(details)
+                            
+                            if recommendation_text not in all_recommendations:
+                                all_recommendations.append(recommendation_text)
+                
+                # Extract from key_value_pairs
+                if content.structured_data.key_value_pairs:
+                    kv_pairs = content.structured_data.key_value_pairs
+                    if "recommended_funds" in kv_pairs:
+                        funds = kv_pairs["recommended_funds"]
+                        if isinstance(funds, list):
+                            for fund in funds:
+                                if isinstance(fund, dict):
+                                    fund_name = fund.get("name", "")
+                                    ticker = fund.get("ticker", "")
+                                    expense = fund.get("expense_ratio", "")
+                                    min_inv = fund.get("minimum_investment", "")
+                                    
+                                    if fund_name:
+                                        rec_text = fund_name
+                                        if ticker:
+                                            rec_text += f" ({ticker})"
+                                        details = []
+                                        if expense:
+                                            details.append(f"Expense: {expense}")
+                                        if min_inv:
+                                            details.append(f"Min: {min_inv}")
+                                        if details:
+                                            rec_text += " - " + ", ".join(details)
+                                        
+                                        if rec_text not in all_recommendations:
+                                            all_recommendations.append(rec_text)
+            
+            # Extract from AI insights recommendations
+            try:
+                if content.ai_insights and hasattr(content.ai_insights, 'recommendations') and content.ai_insights.recommendations:
+                    for rec in content.ai_insights.recommendations:
+                        if rec and len(rec) > 10 and rec not in all_recommendations:
+                            # Check if it's specific (contains names, numbers, etc.)
+                            if any(char.isdigit() for char in rec) or any(keyword in rec.lower() for keyword in ['fund', 'ticker', 'expense', 'minimum', '%', 'vfiax', 'fxai']):
+                                all_recommendations.append(rec)
+                            else:
+                                if rec not in all_key_findings:
+                                    all_key_findings.append(rec)
+            except Exception:
+                pass
+            
+            # Collect confidence scores
+            try:
+                if content.ai_insights and hasattr(content.ai_insights, 'confidence_score'):
+                    confidence_scores.append(content.ai_insights.confidence_score)
+                elif content.summary and hasattr(content.summary, 'confidence_score'):
+                    confidence_scores.append(content.summary.confidence_score)
+            except Exception:
+                pass
+        
+        except Exception as e:
+            # Skip items with errors
+            continue
+    
+    # Check if we have relevant content
+    relevant_contents = [
+        c for c in sorted_contents 
+        if get_relevance_score(c) > 0.5 and 
+        c.summary and 
+        not any(irrelevant in c.summary.executive_summary.lower() for irrelevant in [
+            "does not contain", "cannot provide", "irrelevant", "not relevant", 
+            "donation request", "not about", "unrelated"
+        ])
+    ]
+    
+    # Build final answer
+    if not answer["direct_answer"]:
+        if relevant_contents:
+            # Use the most relevant content's executive summary
+            best_content = relevant_contents[0]
+            if best_content.summary and best_content.summary.executive_summary:
+                answer["direct_answer"] = best_content.summary.executive_summary
+                answer["direct_answer"] = best_content.summary.executive_summary
+        elif all_recommendations:
+            # Synthesize from recommendations
+            answer["direct_answer"] = f"Here are the key recommendations: {', '.join(all_recommendations[:3])}"
+        elif all_key_findings:
+            answer["direct_answer"] = all_key_findings[0]
+        else:
+            # Check if all content is irrelevant
+            all_irrelevant = all(
+                any(irrelevant in (c.summary.executive_summary.lower() if c.summary and c.summary.executive_summary else "") 
+                    for irrelevant in ["does not contain", "cannot provide", "irrelevant", "not relevant", "donation request"])
+                for c in sorted_contents[:3]
+            )
+            
+            if all_irrelevant:
+                answer["direct_answer"] = "I couldn't find relevant content to answer your query. The sources I checked don't contain information about your specific question. Please try rephrasing your query or checking different sources."
+            else:
+                # Use best executive summary as fallback
+                for content in sorted_contents[:3]:
+                    if content.summary and content.summary.executive_summary:
+                        answer["direct_answer"] = content.summary.executive_summary
+                        break
+    
+    # Filter out irrelevant recommendations
+    filtered_recommendations = [
+        rec for rec in all_recommendations 
+        if not any(irrelevant in rec.lower() for irrelevant in [
+            "irrelevant", "does not contain", "cannot provide", "not relevant"
+        ])
+    ]
+    
+    # Limit recommendations to top 5 (more focused)
+    answer["recommendations"] = filtered_recommendations[:5]
+    
+    # Filter key findings similarly
+    filtered_findings = [
+        finding for finding in all_key_findings 
+        if not any(irrelevant in finding.lower() for irrelevant in [
+            "irrelevant", "does not contain", "cannot provide", "not relevant"
+        ])
+    ]
+    answer["key_findings"] = filtered_findings[:5]
+    
+    # Only include relevant sources
+    answer["sources"] = sources[:3]  # Limit to top 3
+    
+    # Calculate confidence based on relevant content only
+    if relevant_contents:
+        relevant_confidence_scores = [
+            get_relevance_score(c) for c in relevant_contents[:3]
+        ]
+        answer["confidence"] = sum(relevant_confidence_scores) / len(relevant_confidence_scores) if relevant_confidence_scores else 0.5
+    else:
+        answer["confidence"] = 0.1  # Low confidence if no relevant content
+    
+    return answer
+
+
 def format_processing_results(
     processed_contents: List[ProcessedContent],
     query_text: str,
     total_processing_time: float,
-    processing_stats: Dict[str, Any]
+    processing_stats: Dict[str, Any],
+    max_items_in_response: int = 3  # Limit items for concise response
 ) -> Dict[str, Any]:
     """
     Format processed content results with proper serialization.
@@ -95,11 +339,30 @@ def format_processing_results(
         processing_stats: Processing statistics
         
     Returns:
-        Formatted processing results
+        Formatted processing results with synthesized answer
     """
-    # Serialize processed contents
+    # Sort by relevance and limit to top N items for concise response
+    def get_relevance_for_sorting(content):
+        try:
+            if content.ai_insights and hasattr(content.ai_insights, 'relevance_score'):
+                return content.ai_insights.relevance_score or 0.0
+            return 0.0
+        except Exception:
+            return 0.0
+    
+    # Sort by relevance (highest first) and take top N
+    sorted_for_response = sorted(
+        processed_contents,
+        key=lambda x: (
+            get_relevance_for_sorting(x),
+            x.enhanced_quality_score if hasattr(x, 'enhanced_quality_score') else 0.0
+        ),
+        reverse=True
+    )[:max_items_in_response]
+    
+    # Serialize processed contents (limited to top N)
     serialized_contents = []
-    for content in processed_contents:
+    for content in sorted_for_response:
         try:
             # Convert to dict and handle any serialization issues
             content_dict = content.model_dump()
@@ -123,18 +386,23 @@ def format_processing_results(
     # Calculate average processing time per content
     avg_processing_time = total_processing_time / len(processed_contents) if processed_contents else 0
     
+    # Synthesize direct answer from processed content
+    synthesized_answer = synthesize_answer_from_content(processed_contents, query_text)
+    
     return {
         "query": {
             "text": query_text,
             "processed_at": datetime.utcnow().isoformat() + "Z"
         },
+        "answer": synthesized_answer,  # NEW: Direct answer section
         "results": {
-            "processed_contents": serialized_contents,
-            "total_items": len(serialized_contents),
-            "processed_items": successful_contents,
-            "successful_items": successful_contents,
-            "failed_items": failed_contents,
-            "success_rate": successful_contents / len(serialized_contents) if serialized_contents else 0
+            "processed_contents": serialized_contents,  # Limited to top N most relevant
+            "total_items": len(processed_contents),  # Total items processed (not limited)
+            "processed_items": len(serialized_contents),  # Items shown in response
+            "successful_items": len([c for c in processed_contents if hasattr(c, 'summary')]),
+            "failed_items": len(processed_contents) - len([c for c in processed_contents if hasattr(c, 'summary')]),
+            "success_rate": len([c for c in processed_contents if hasattr(c, 'summary')]) / len(processed_contents) if processed_contents else 0.0,
+            "note": f"Showing top {len(serialized_contents)} most relevant results out of {len(processed_contents)} total items processed"
         },
         "performance": {
             "total_processing_time_seconds": round(total_processing_time, 3),

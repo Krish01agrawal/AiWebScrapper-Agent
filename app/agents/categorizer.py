@@ -40,10 +40,14 @@ class DomainCategorizer(BaseAgent):
                 "inference", "prediction", "classification", "regression", "clustering"
             ],
             QueryCategory.MUTUAL_FUNDS: [
-                "mutual fund", "investment", "finance", "money", "portfolio", "asset",
-                "equity", "debt", "hybrid", "sector", "index", "etf", "dividend",
-                "capital gains", "risk", "return", "volatility", "diversification",
-                "financial planning", "retirement", "tax saving", "wealth creation"
+                "mutual fund", "mutual funds", "investment", "invest", "finance", "financial", 
+                "money", "portfolio", "asset", "assets", "equity", "equities", "debt", 
+                "hybrid", "sector", "index", "etf", "etfs", "dividend", "dividends",
+                "capital gains", "risk", "return", "returns", "volatility", "diversification",
+                "financial planning", "retirement", "tax saving", "wealth creation", "investing",
+                "investor", "investors", "fund", "funds", "stocks", "bonds", "securities",
+                "vanguard", "fidelity", "schwab", "morningstar", "expense ratio", "nav",
+                "net asset value", "beginner", "beginners", "low risk", "high risk"
             ]
         }
     
@@ -81,13 +85,30 @@ class DomainCategorizer(BaseAgent):
         scores = {}
         for category, keywords in self.keyword_rules.items():
             score = 0
+            matched_keywords = []
             for keyword in keywords:
-                if keyword in all_text:
+                # Use word boundary matching for better accuracy
+                import re
+                pattern = r'\b' + re.escape(keyword) + r'\b'
+                if re.search(pattern, all_text, re.IGNORECASE):
                     score += 1
+                    matched_keywords.append(keyword)
             
             if score > 0:
-                # Normalize score based on number of keywords
-                scores[category] = min(0.9, score / len(keywords) + 0.3)
+                # Boost score for high-priority keywords
+                priority_keywords = {
+                    QueryCategory.MUTUAL_FUNDS: ["mutual fund", "mutual funds", "investment", "finance"],
+                    QueryCategory.AI_TOOLS: ["ai", "artificial intelligence", "machine learning", "ml"]
+                }
+                priority_boost = 0.0
+                if category in priority_keywords:
+                    for priority_keyword in priority_keywords[category]:
+                        if priority_keyword in matched_keywords:
+                            priority_boost += 0.2
+                
+                # Normalize score - give higher confidence for more matches
+                base_score = min(0.9, (score / max(len(keywords), 10)) * 2 + 0.3)
+                scores[category] = min(0.95, base_score + priority_boost)
         
         if not scores:
             return QueryCategory.GENERAL, 0.4
@@ -95,6 +116,10 @@ class DomainCategorizer(BaseAgent):
         # Return category with highest score
         best_category = max(scores.keys(), key=lambda k: scores[k])
         confidence = scores[best_category]
+        
+        # If confidence is still low but we have matches, boost it
+        if confidence < 0.6 and scores:
+            confidence = min(0.8, confidence + 0.2)
         
         return best_category, confidence
     
